@@ -1,0 +1,9 @@
+SWORD: {ingots: 2, sticks: 1}
+PICKAXE: {ingots: 3, sticks: 2}
+AXE: {ingots: 3, sticks: 2}
+SHOVEL: {ingots: 1, sticks: 2}
+HOE: {ingots: 2, sticks: 2}
+HELMET: {ingots: 5, sticks: 0}
+CHESTPLATE: {ingots: 8, sticks: 0}
+LEGGINGS: {ingots: 7, sticks: 0}
+BOOTS: {ingots: 4, sticks: 0}

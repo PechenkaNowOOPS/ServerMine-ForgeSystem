@@ -1,0 +1,7 @@
+# This pack is appended to other server packs, never replaces them.
+enabled: true
+host: 127.0.0.1
+port: 8127
+url: 'http://127.0.0.1:8127/forge.zip'
+required: false
+uuid: '512d2aab-2f41-43f3-9a4f-067e3f987dda'

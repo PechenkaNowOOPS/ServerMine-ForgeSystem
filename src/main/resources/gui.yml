@@ -1,0 +1,22 @@
+schema-version: 3
+forge:
+  size: 54
+  slots:
+    fuel-input: 10
+    ingot-input: 12
+    reheat-input: 14
+    temperature-fallback: 16
+    load-fuel: 19
+    fuel-reserve: 20
+    status: 21
+    reheat: 23
+    help: 25
+    tools: {sword: 28, pickaxe: 29, axe: 30, shovel: 31, hoe: 32}
+    armor: {helmet: 38, chestplate: 39, leggings: 40, boots: 41}
+    close: 53
+  temperature:
+    gauge-frames: 21
+    visual-update-period-ticks: 5
+  visuals:
+    custom-background: true
+    fallback-on-pack-failure: true

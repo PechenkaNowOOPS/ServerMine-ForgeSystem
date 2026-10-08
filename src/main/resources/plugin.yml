@@ -1,0 +1,15 @@
+name: ForgeSystem
+version: 3.0.8
+main: ru.servermine.forge.ForgeSystemPlugin
+api-version: '26.2'
+description: ServerMine forge stations, items and integrated forging
+author: ServerMine
+commands:
+  forge:
+    description: Кузнечная система
+    aliases: [fs, forgeitems, fi, fg, forgeminigame, fguitest, forgeguitest]
+permissions:
+  forgesystem.use:
+    default: true
+  forgesystem.admin:
+    default: op

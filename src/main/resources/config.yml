@@ -1,0 +1,26 @@
+schema-version: 3
+config-revision: forge-v3
+station:
+  ambient-temperature: 20.0
+  working-temperature: 900.0
+  maximum-temperature: 1200.0
+  heating-per-second: 25.0
+  cooling-per-second: 8.0
+  manager-period-ticks: 20
+  save-period-ticks: 200
+operation-cooldown-ms: 300
+fuel:
+  COAL: 80.0
+  CHARCOAL: 80.0
+  BLAZE_ROD: 120.0
+  COAL_BLOCK: 800.0
+stages:
+  stage-1: {zone-width: 0.34, one-way-seconds: 1.80, min-center-shift: 0.15, edge-padding: 0.03}
+  stage-2: {zone-width: 0.22, one-way-seconds: 1.30, min-center-shift: 0.18, edge-padding: 0.03}
+  stage-3: {zone-width: 0.12, one-way-seconds: 0.95, min-center-shift: 0.20, edge-padding: 0.03}
+hammer:
+  durability:
+    enabled: false
+    max: 0
+    loss-per-forge-hit: 1
+    loss-on-forge-activation: 0

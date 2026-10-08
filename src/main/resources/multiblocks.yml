@@ -1,0 +1,5 @@
+# Configurable initial layout; all offsets are relative to the blast furnace.
+# The final multiblock shape was not specified in the supplied documents.
+core: BLAST_FURNACE
+blocks:
+  - {x: 0, y: -1, z: 0, material: BRICKS}

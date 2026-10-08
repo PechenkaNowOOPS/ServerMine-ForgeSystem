@@ -1,0 +1,46 @@
+# Build outputs and generated resource pack
+.gradle/
+build/
+out/
+resourcepack/
+src/main/resources/forge.zip
+/gui-preview*.png
+/workpiece-models-preview.png
+/hammer-preview.png
+
+# Local tools and editor settings
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+*.log
+*.hprof
+
+# Server runtime, worlds, player data and secrets
+server/
+smoke-server/
+runtime/
+plugins/
+world*/
+backups/
+logs/
+cache/
+libraries/
+versions/
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+state.yml
+server.properties
+ops.json
+whitelist.json
+usercache.json
+
+# Distribution archives; Gradle wrapper is a tracked build tool
+*.zip
+*.jar
+!gradle/wrapper/gradle-wrapper.jar

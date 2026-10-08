@@ -1,0 +1,15 @@
+IRON:
+  initial-after-forge: 1000.0
+  minimum-working: 700.0
+  cooling-per-second: 22.0
+  maximum-safe: 1200.0
+GOLD:
+  initial-after-forge: 900.0
+  minimum-working: 600.0
+  cooling-per-second: 26.0
+  maximum-safe: 1100.0
+COPPER:
+  initial-after-forge: 900.0
+  minimum-working: 550.0
+  cooling-per-second: 28.0
+  maximum-safe: 1080.0
