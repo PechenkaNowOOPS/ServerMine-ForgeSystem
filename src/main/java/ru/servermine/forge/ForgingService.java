@@ -84,4 +84,20 @@ final class ForgingService {
         }
         return false;
     }
+    boolean upgradeDiamond(Player p,Block block) {
+        if(!anvil(block.getType()))return false;
+        ItemStack item=p.getInventory().getItemInMainHand();var read=plugin.items.readWorkpiece(item);
+        if(read.isEmpty()||read.get().state()!=State.FINISHED)return false;
+        if(!p.hasPermission("forgesystem.use"))throw new IllegalArgumentException(plugin.settings.message("no-permission"));
+        plugin.store.transact(p,s->upgradeInventory(s.contents,p.getInventory().getHeldItemSlot()));
+        p.playSound(p.getLocation(),Sound.BLOCK_ANVIL_USE,.8f,1.2f);p.sendMessage("§bСнаряжение улучшено до алмазного. Качество сохранено.");return true;
+    }
+    void upgradeInventory(ItemStack[] contents,int hand) {
+        ItemStack result=plugin.items.upgradeToDiamond(contents[hand]);
+        Workpiece current=plugin.items.readWorkpiece(contents[hand]).orElseThrow();
+        int cost=EquipmentRules.diamonds(current.product());ItemStack diamonds=contents[40];
+        if(ForgeItems.empty(diamonds)||diamonds.getType()!=Material.DIAMOND||diamonds.hasItemMeta()||diamonds.getAmount()<cost)
+            throw new IllegalArgumentException("Возьмите в левую руку обычные алмазы: "+cost+" шт.");
+        ForgeMenuService.consume(contents,40,cost);contents[hand]=result;
+    }
 }

@@ -54,7 +54,9 @@ final class ForgeItems implements ForgeItemsApi {
             var w=new Workpiece(UUID.fromString(str(p,"instance_id")),Metal.valueOf(str(p,"material")),Product.valueOf(str(p,"product_type")),State.valueOf(str(p,"forge_state")),Quality.valueOf(str(p,"quality")),
                     p.get(key("quality_stage"),PersistentDataType.INTEGER),p.get(key("current_stage"),PersistentDataType.INTEGER),p.get(key("max_reachable_stage"),PersistentDataType.INTEGER),
                     uuid(str(p,"blacksmith_uuid")),uuid(str(p,"session_id")),p.get(key("temperature_value"),PersistentDataType.DOUBLE),p.get(key("temperature_updated_at_epoch_ms"),PersistentDataType.LONG),str(p,"config_revision"));
-            if(w.temperature()>9999||w.updated()>System.currentTimeMillis()+60000||item.getType()!=(w.state()==State.FINISHED?icon(w.metal(),w.product()):Material.PAPER)||(signed&&!verify(canonical(w),str(p,"signature")))) return Optional.empty();
+            String tier=str(p,"equipment_tier");boolean diamond="DIAMOND".equals(tier);
+            if(tier!=null&&(!diamond||w.state()!=State.FINISHED||w.metal()!=Metal.IRON))return Optional.empty();
+            if(w.temperature()>9999||w.updated()>System.currentTimeMillis()+60000||item.getType()!=(diamond?Material.valueOf("DIAMOND_"+w.product().name()):w.state()==State.FINISHED?icon(w.metal(),w.product()):Material.PAPER)||(signed&&!verify(signedValue(w,diamond),str(p,"signature")))) return Optional.empty();
             if(w.state()==State.FORGING&&w.session()==null&&w.cap()>w.stage()) {
                 var r=plugin.settings.metals.get(w.metal());
                 if(w.at(System.currentTimeMillis(),plugin.settings.ambient,r.cooling())<=r.minimum())
@@ -87,6 +89,20 @@ final class ForgeItems implements ForgeItemsApi {
         Workpiece old=readWorkpiece(item).orElseThrow(); if(!old.reheatAllowed()) throw new IllegalArgumentException("Reheat forbidden");
         return change(item,old.thermal(t,now));
     }
+    boolean diamond(ItemStack item) {return !empty(item)&&"DIAMOND".equals(str(item.getItemMeta().getPersistentDataContainer(),"equipment_tier"));}
+    ItemStack upgradeToDiamond(ItemStack original) {
+        Workpiece w=readWorkpiece(original).orElseThrow(()->new IllegalArgumentException("Нужно готовое кованое железное снаряжение."));
+        if(!EquipmentRules.canUpgrade(w,diamond(original)))throw new IllegalArgumentException("Улучшить можно только готовое кованое железное снаряжение.");
+        ItemStack result=original.clone();var meta=result.getItemMeta();
+        set(meta.getPersistentDataContainer(),"equipment_tier","DIAMOND");result.setItemMeta(meta);
+        result=encode(result,w);
+        if(original.getItemMeta() instanceof org.bukkit.inventory.meta.Damageable old&&result.getItemMeta() instanceof org.bukkit.inventory.meta.Damageable next) {
+            int oldMax=old.hasMaxDamage()?old.getMaxDamage():original.getType().getMaxDurability();
+            int newMax=next.hasMaxDamage()?next.getMaxDamage():result.getType().getMaxDurability();
+            next.setDamage(EquipmentRules.upgradedDamage(old.getDamage(),oldMax,newMax));result.setItemMeta(next);
+        }
+        return result;
+    }
     ItemStack refreshLore(ItemStack item) {
         if(isHammer(item)) {
             var meta=item.getItemMeta();
@@ -104,22 +120,24 @@ final class ForgeItems implements ForgeItemsApi {
         return readWorkpiece(item).map(w->encode(item,w)).orElse(item);
     }
     private ItemStack encode(ItemStack original,Workpiece w) {
-        ItemStack item=original.clone(); item.setType(w.state()==State.FINISHED?icon(w.metal(),w.product()):Material.PAPER);
+        boolean diamond=diamond(original)&&w.state()==State.FINISHED;
+        ItemStack item=original.clone(); item.setType(diamond?Material.valueOf("DIAMOND_"+w.product().name()):w.state()==State.FINISHED?icon(w.metal(),w.product()):Material.PAPER);
         var meta=item.getItemMeta(); var p=meta.getPersistentDataContainer();
         set(p,"item_definition","forgesystem:workpiece"); p.set(key("item_schema"),PersistentDataType.INTEGER,1);
         set(p,"instance_id",w.id().toString()); set(p,"material",w.metal().name()); set(p,"product_type",w.product().name()); set(p,"forge_state",w.state().name()); set(p,"quality",w.quality().name());
         p.set(key("quality_stage"),PersistentDataType.INTEGER,w.qualityStage()); p.set(key("current_stage"),PersistentDataType.INTEGER,w.stage()); p.set(key("max_reachable_stage"),PersistentDataType.INTEGER,w.cap());
         set(p,"blacksmith_uuid",w.smith()==null?null:w.smith().toString()); set(p,"session_id",w.session()==null?null:w.session().toString());
-        p.set(key("temperature_value"),PersistentDataType.DOUBLE,w.temperature()); p.set(key("temperature_updated_at_epoch_ms"),PersistentDataType.LONG,w.updated()); set(p,"config_revision",w.revision()); set(p,"signature",sign(canonical(w)));
+        p.set(key("temperature_value"),PersistentDataType.DOUBLE,w.temperature()); p.set(key("temperature_updated_at_epoch_ms"),PersistentDataType.LONG,w.updated()); set(p,"config_revision",w.revision()); set(p,"signature",sign(signedValue(w,diamond)));
         meta.setMaxStackSize(1);
-        meta.displayName(text(label(w.state())+": "+w.product().label,NamedTextColor.GOLD));
+        if(w.state()!=State.FINISHED||!"FINISHED".equals(str(original.getItemMeta().getPersistentDataContainer(),"forge_state"))||!meta.hasDisplayName())meta.displayName(text(label(w.state())+": "+w.product().label,NamedTextColor.GOLD));
         double temperature=w.at(System.currentTimeMillis(),plugin.settings.ambient,plugin.settings.metals.get(w.metal()).cooling());
         String sprite=ItemSprites.workpiece(w,temperature,plugin.settings.metals.get(w.metal()).minimum());
         meta.setItemModel(sprite==null?null:new NamespacedKey("servermine",sprite));
-        var lore=new ArrayList<Component>(); lore.add(text("Материал: "+switch(w.metal()){case IRON->"Железо";case GOLD->"Золото";case COPPER->"Медь";},NamedTextColor.GRAY));
+        var lore=new ArrayList<Component>(); lore.add(text("Материал: "+(diamond?"Алмаз (кованая железная основа)":switch(w.metal()){case IRON->"Железо";case GOLD->"Золото";case COPPER->"Медь";}),NamedTextColor.GRAY));
         lore.add(text("Температура: "+Math.round(temperature)+"°C",NamedTextColor.YELLOW));
         lore.add(text("Качество: "+quality(w.quality())+" | Этап "+w.stage()+" / "+w.cap(),NamedTextColor.GRAY));
         lore.add(text(switch(w.state()) {case HOT_BLANK,FORGING -> "В левую руку; ПКМ молотом по наковальне."; case UNQUENCHED -> "ПКМ по воде — закалить."; case QUENCHED_PART -> "ПКМ по наковальне с палками в левой руке."; case FINISHED -> "Ковка завершена.";},NamedTextColor.GRAY));
+        if(EquipmentRules.canUpgrade(w,diamond))lore.add(text("ПКМ по наковальне: "+EquipmentRules.diamonds(w.product())+" алмазов в левой руке — улучшить.",NamedTextColor.AQUA));
         meta.lore(lore); item.setItemMeta(meta); return item;
     }
     static String quality(Quality q) { return switch(q) {case NONE->"Нет";case GOOD->"Хорошая";case EXCELLENT->"Отличная";case MASTERWORK->"Мастерская";}; }
@@ -127,6 +145,7 @@ final class ForgeItems implements ForgeItemsApi {
     static Material icon(Metal m,Product p) { return Material.valueOf((m==Metal.GOLD?"GOLDEN":m.name())+"_"+p.name()); }
     static Component text(String s,NamedTextColor c) { return Component.text(s,c).decoration(TextDecoration.ITALIC,false); }
     static String canonical(Workpiece w) { return "workpiece:1|"+w.id()+"|"+w.metal()+"|"+w.product()+"|"+w.state()+"|"+w.quality()+"|"+w.qualityStage()+"|"+w.stage()+"|"+w.cap()+"|"+w.smith()+"|"+w.session()+"|"+w.temperature()+"|"+w.updated()+"|"+w.revision(); }
+    private static String signedValue(Workpiece w,boolean diamond){return canonical(w)+(diamond?"|equipment_tier=DIAMOND":"");}
     private String sign(String value) {
         try { var mac=Mac.getInstance("HmacSHA256"); mac.init(new SecretKeySpec(secret,"HmacSHA256")); return HexFormat.of().formatHex(mac.doFinal(value.getBytes(StandardCharsets.UTF_8))); }
         catch(GeneralSecurityException ex) { throw new IllegalStateException(ex); }

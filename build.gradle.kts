@@ -1,6 +1,6 @@
 plugins { java }
 group = "ru.servermine"
-version = "3.0.8"
+version = "3.1.0"
 repositories { mavenCentral(); maven("https://repo.papermc.io/repository/maven-public/") }
 dependencies {
     compileOnly("io.papermc.paper:paper-api:26.2.build.127-stable")
