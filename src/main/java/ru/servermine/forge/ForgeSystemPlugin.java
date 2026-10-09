@@ -33,6 +33,7 @@ public final class ForgeSystemPlugin extends JavaPlugin implements Listener {
             getServer().getScheduler().runTaskTimer(this,()->{
                 if(store.failed)return;tick++;
                 try{forging.tick(tick);if(tick%settings.physics==0)menus.physics();if(tick%settings.visual==0)menus.tick();if(tick%settings.save==0)store.save();
+                    if(tick%200==0)equipmentRecipes.remove();
                     if(tick%20==0)for(Player p:Bukkit.getOnlinePlayers())refreshLore(p);
                 }catch(Exception ex){getLogger().log(java.util.logging.Level.SEVERE,"Forge scheduler error",ex);}
             },1,1);
@@ -57,6 +58,8 @@ public final class ForgeSystemPlugin extends JavaPlugin implements Listener {
     }
     void refreshInventorySprites(Inventory inventory){for(int i=0;i<inventory.getSize();i++){ItemStack before=inventory.getItem(i);if(items.isHammer(before)||items.readWorkpiece(before).isPresent()){ItemStack after=items.refreshLore(before);if(!Objects.equals(before,after))inventory.setItem(i,after);}}}
     @EventHandler public void join(PlayerJoinEvent e){recover(e.getPlayer());}
+    @EventHandler public void serverLoaded(org.bukkit.event.server.ServerLoadEvent e){equipmentRecipes.remove();}
+    @EventHandler public void resourcesReloaded(io.papermc.paper.event.server.ServerResourcesReloadedEvent e){Bukkit.getScheduler().runTask(this,equipmentRecipes::remove);}
     @EventHandler public void quit(PlayerQuitEvent e){Player p=e.getPlayer();safe(p,()->forging.stop(p,false));if(menus.menus.containsKey(p.getUniqueId()))p.closeInventory();pack.quit(p);menus.operations.remove(p.getUniqueId());}
     @EventHandler public void resource(PlayerResourcePackStatusEvent e){pack.status(e);}
     @EventHandler(priority=EventPriority.HIGHEST,ignoreCancelled=true) public void interact(PlayerInteractEvent e){

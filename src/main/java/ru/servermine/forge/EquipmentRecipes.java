@@ -14,7 +14,7 @@ final class EquipmentRecipes {
         while(recipes.hasNext()) {
             Recipe recipe=recipes.next();
             if(recipe instanceof CraftingRecipe&&recipe instanceof Keyed keyed&&EquipmentRules.blockedCraft(recipe.getResult().getType())) {
-                removed.putIfAbsent(keyed.getKey(),recipe);recipes.remove();
+                removed.put(keyed.getKey(),recipe);recipes.remove();
             }
         }
     }
