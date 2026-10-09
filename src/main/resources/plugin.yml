@@ -1,5 +1,5 @@
 name: ForgeSystem
-version: 3.0.8
+version: 3.1.0
 main: ru.servermine.forge.ForgeSystemPlugin
 api-version: '26.2'
 description: ServerMine forge stations, items and integrated forging

@@ -214,7 +214,7 @@ public class BuildPack {
     }
     static void write(String path,String content)throws Exception{Path out=ROOT.resolve(path);Files.createDirectories(out.getParent());Files.writeString(out,content,StandardCharsets.UTF_8);}
     public static void main(String[] args)throws Exception{
-        fonts();gui();hudPack();itemModels();hammerSprite();write("pack.mcmeta","{\"pack\":{\"description\":\"ServerMine ForgeSystem 3.0.8\",\"min_format\":[88,0],\"max_format\":[88,0]}}");
+        fonts();gui();hudPack();itemModels();hammerSprite();write("pack.mcmeta","{\"pack\":{\"description\":\"ServerMine ForgeSystem 3.1.0\",\"min_format\":[88,0],\"max_format\":[88,0]}}");
         try(var out=new ZipOutputStream(Files.newOutputStream(Path.of("src/main/resources/forge.zip")))){try(var walk=Files.walk(ROOT)){for(Path f:walk.filter(Files::isRegularFile).sorted().toList()){ZipEntry entry=new ZipEntry(ROOT.relativize(f).toString().replace('\\','/'));entry.setTime(0);out.putNextEntry(entry);Files.copy(f,out);out.closeEntry();}}}
         System.out.println("Built forge.zip: "+GUI.size()+" GUI providers, "+HUD.size()+" HUD providers");
     }
