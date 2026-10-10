@@ -44,6 +44,13 @@ final class StorageSelfTest {
             String root="players."+id+".pending";store.data.set(root+".id",UUID.randomUUID().toString());store.data.set(root+".contents",DurableStore.encode(after));store.data.set(root+".cursor",DurableStore.encode(new ItemStack(Material.COAL,3)));store.save();
             DurableStore recovered=new DurableStore(file);recovered.recover(player);check(state[0][2].getAmount()==5&&cursor[0].getAmount()==3&&!recovered.data.contains(root),"write-ahead recovery");
             recovered.recover(player);check(state[0][2].getAmount()==5,"recovery duplicated items");
+            ItemStack[] stable=Arrays.stream(state[0]).map(i->i==null?null:i.clone()).toArray(ItemStack[]::new);
+            DurableStore failedCommit=new DurableStore(dir.resolve("missing-parent").resolve("state.yml"));
+            boolean rejected=false;
+            try {
+                failedCommit.transact(player,s->{s.contents[0]=new ItemStack(Material.IRON_SWORD);},new DurableStore.WorldEffect(UUID.randomUUID(),1,2,3,"minecraft:water_cauldron[level=2]","minecraft:water_cauldron[level=1]"));
+            } catch(IllegalStateException expected) {rejected=true;}
+            check(rejected&&DurableStore.encode(stable).equals(DurableStore.encode(state[0]))&&failedCommit.failed,"failed journal write changed inventory before world effect");
         } finally {Files.deleteIfExists(file);Files.deleteIfExists(dir.resolve("state.yml.tmp"));Files.deleteIfExists(dir);}
     }
 }
