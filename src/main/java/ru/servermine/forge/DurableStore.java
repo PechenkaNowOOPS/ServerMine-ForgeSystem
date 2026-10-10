@@ -7,6 +7,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
 import java.util.function.Consumer;
+import org.bukkit.Bukkit;
+import org.bukkit.World;
+import org.bukkit.block.Block;
+import org.bukkit.block.data.BlockData;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -22,6 +26,21 @@ final class DurableStore {
     static ItemStack decode(String s) { return s==null||s.isBlank()?null:ItemStack.deserializeBytes(Base64.getDecoder().decode(s)); }
     static List<String> encode(ItemStack[] items) { return Arrays.stream(items).map(DurableStore::encode).toList(); }
     static ItemStack[] decode(List<String> items,int count) { ItemStack[] a=new ItemStack[count]; for(int n=0;n<Math.min(count,items.size());n++) a[n]=decode(items.get(n)); return a; }
+    record WorldEffect(UUID world,int x,int y,int z,String before,String after) {
+        static WorldEffect capture(Block block,String after) {
+            return new WorldEffect(block.getWorld().getUID(),block.getX(),block.getY(),block.getZ(),block.getBlockData().getAsString(),after);
+        }
+        void apply() {
+            World target=Bukkit.getWorld(world);
+            if(target==null)throw new IllegalStateException("World for pending ForgeSystem block operation is unavailable: "+world);
+            Block block=target.getBlockAt(x,y,z);String current=block.getBlockData().getAsString();
+            if(current.equals(after)){target.save(true);return;}
+            if(!current.equals(before))throw new IllegalStateException("Pending ForgeSystem block operation conflicts with changed world at "+world+":"+x+","+y+","+z);
+            BlockData data=Bukkit.createBlockData(after);block.setBlockData(data,false);target.save(true);
+            if(!block.getBlockData().getAsString().equals(after))throw new IllegalStateException("Could not persist ForgeSystem block operation");
+        }
+        WorldEffect reverse() {return new WorldEffect(world,x,y,z,after,before);}
+    }
     void save() {
         if(failed) throw new IllegalStateException("Storage is in fail-closed mode");
         try {
@@ -42,27 +61,65 @@ final class DurableStore {
     }
     ItemStack[] inputs(UUID id) { return decode(data.getStringList("players."+id+".inputs"),3); }
     void transact(Player p,Consumer<InventoryState> edit) {
+        transact(p,edit,null);
+    }
+    void transact(Player p,Consumer<InventoryState> edit,WorldEffect effect) {
         if(failed) throw new IllegalStateException("Storage unavailable");
         String root="players."+p.getUniqueId();
         if(data.contains(root+".pending")) throw new IllegalStateException("Unrecovered operation");
         InventoryState state=new InventoryState(p,inputs(p.getUniqueId()));
+        ItemStack[] previousContents=Arrays.stream(state.contents).map(i->i==null?null:i.clone()).toArray(ItemStack[]::new);
+        ItemStack previousCursor=state.cursor==null?null:state.cursor.clone();
         String rollback=data.saveToString();
         try { edit.accept(state); }
         catch(RuntimeException e) { try{data.loadFromString(rollback);}catch(Exception ignored){} throw e; }
         UUID operation=UUID.randomUUID();
         data.set(root+".inputs",encode(state.inputs));
         data.set(root+".pending.id",operation.toString()); data.set(root+".pending.contents",encode(state.contents)); data.set(root+".pending.cursor",encode(state.cursor));
-        save();
-        p.getInventory().setContents(state.contents); p.setItemOnCursor(state.cursor); p.saveData();
-        data.set(root+".last-operation",operation.toString()); data.set(root+".pending",null); save();
+        WorldEffect worldEffect=effect;writeWorldEffect(root+".pending.world-effect",worldEffect);
+        try {save();} catch(RuntimeException ex) {try{data.loadFromString(rollback);}catch(Exception ignored){}throw ex;}
+        String journalSnapshot=data.saveToString();
+        try {
+            if(worldEffect!=null)worldEffect.apply();
+            p.getInventory().setContents(state.contents); p.setItemOnCursor(state.cursor); p.saveData();
+            data.set(root+".last-operation",operation.toString()); data.set(root+".pending",null); save();
+        } catch(RuntimeException ex) {
+            if(failed) {
+                try{data.loadFromString(journalSnapshot);}catch(Exception ignored){}
+                throw new IllegalStateException("ForgeSystem operation remains journaled and requires recovery",ex);
+            }
+            try {
+                p.getInventory().setContents(previousContents);p.setItemOnCursor(previousCursor);p.saveData();
+                if(worldEffect!=null)worldEffect.reverse().apply();
+                data.loadFromString(rollback);save();
+            } catch(Exception compensation) {
+                try{data.loadFromString(journalSnapshot);}catch(Exception ignored){}
+                failed=true;throw new IllegalStateException("ForgeSystem operation remains journaled after compensation failed",compensation);
+            }
+            throw new IllegalStateException("ForgeSystem operation was rolled back",ex);
+        }
     }
     void recover(Player p) {
         String root="players."+p.getUniqueId();
         if(data.contains(root+".pending")) {
-            p.getInventory().setContents(decode(data.getStringList(root+".pending.contents"),41));
-            p.setItemOnCursor(decode(data.getString(root+".pending.cursor"))); p.saveData();
-            data.set(root+".pending",null); save();
+            String pendingSnapshot=data.saveToString();
+            try {
+                p.getInventory().setContents(decode(data.getStringList(root+".pending.contents"),41));
+                p.setItemOnCursor(decode(data.getString(root+".pending.cursor"))); p.saveData();
+                WorldEffect effect=readWorldEffect(root+".pending.world-effect");if(effect!=null)effect.apply();
+                data.set(root+".last-operation",data.getString(root+".pending.id"));data.set(root+".pending",null);save();failed=false;
+            } catch(RuntimeException ex) {try{data.loadFromString(pendingSnapshot);}catch(Exception ignored){}failed=true;throw new IllegalStateException("Pending ForgeSystem operation could not be recovered",ex); }
         }
+    }
+    void writeWorldEffect(String root,WorldEffect effect) {
+        if(effect==null){data.set(root,null);return;}
+        data.set(root+".world",effect.world().toString());data.set(root+".x",effect.x());data.set(root+".y",effect.y());data.set(root+".z",effect.z());
+        data.set(root+".before",effect.before());data.set(root+".after",effect.after());
+    }
+    WorldEffect readWorldEffect(String root) {
+        if(!data.contains(root+".world"))return null;
+        return new WorldEffect(UUID.fromString(data.getString(root+".world")),data.getInt(root+".x"),data.getInt(root+".y"),data.getInt(root+".z"),
+                Objects.requireNonNull(data.getString(root+".before")),Objects.requireNonNull(data.getString(root+".after")));
     }
     void returnInputs(Player p) {
         transact(p,s->{for(int i=0;i<3;i++) { giveOrMail(p,s,s.inputs[i]); s.inputs[i]=null; }});

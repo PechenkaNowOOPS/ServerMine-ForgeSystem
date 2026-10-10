@@ -4,6 +4,7 @@ import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 import org.bukkit.*;
 import org.bukkit.block.Block;
+import org.bukkit.block.data.Levelled;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import net.kyori.adventure.text.Component;
@@ -74,8 +75,16 @@ final class ForgingService {
     }
     boolean quenchOrAssemble(Player p,Block block){
         var item=p.getInventory().getItemInMainHand();var read=plugin.items.readWorkpiece(item);if(read.isEmpty())return false;Workpiece w=read.get();
-        if(w.state()==State.UNQUENCHED&&(block.getType()==Material.WATER||block.getType()==Material.WATER_CAULDRON)){
-            plugin.store.transact(p,s->{int hand=p.getInventory().getHeldItemSlot();s.contents[hand]=plugin.items.change(s.contents[hand],w.progress(w.product().armor()?State.FINISHED:State.QUENCHED_PART,w.quality(),w.stage(),w.cap(),w.smith(),null,plugin.settings.ambient,System.currentTimeMillis()));});
+        if(w.state()==State.UNQUENCHED&&block.getType()==Material.WATER_CAULDRON){
+            if(!p.hasPermission("forgesystem.use"))throw new IllegalArgumentException(plugin.settings.message("no-permission"));
+            if(!(block.getBlockData() instanceof Levelled levelled))throw new IllegalArgumentException("Закалка требует наполненный водой котёл.");
+            String target=QuenchRules.nextCauldronData(block.getType(),levelled.getLevel(),levelled.getMaximumLevel());
+            var effect=DurableStore.WorldEffect.capture(block,target);
+            plugin.store.transact(p,s->{int hand=p.getInventory().getHeldItemSlot();
+                Workpiece current=plugin.items.readWorkpiece(s.contents[hand]).orElseThrow(()->new IllegalArgumentException("Заготовка повреждена или не подписана."));
+                if(!QuenchRules.canQuench(current,true,block.getType(),levelled.getLevel()))throw new IllegalArgumentException("Эту деталь нельзя закалить.");
+                s.contents[hand]=plugin.items.change(s.contents[hand],current.progress(current.product().armor()?State.FINISHED:State.QUENCHED_PART,current.quality(),current.stage(),current.cap(),current.smith(),null,plugin.settings.ambient,System.currentTimeMillis()));
+            },effect);
             p.playSound(p.getLocation(),Sound.BLOCK_FIRE_EXTINGUISH,1,1);return true;
         }
         if(w.state()==State.QUENCHED_PART&&anvil(block.getType())){

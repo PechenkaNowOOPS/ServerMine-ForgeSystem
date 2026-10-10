@@ -29,6 +29,9 @@ final class ForgeItems implements ForgeItemsApi {
     static String str(PersistentDataContainer p,String k) { return p.get(key(k),PersistentDataType.STRING); }
     private static void set(PersistentDataContainer p,String k,String v) { if(v==null) p.remove(key(k)); else p.set(key(k),PersistentDataType.STRING,v); }
     String definition(ItemStack item) { return empty(item)?null:str(item.getItemMeta().getPersistentDataContainer(),"item_definition"); }
+    static boolean forgeWorkpieceIdentity(ItemStack item) {
+        return !empty(item) && "forgesystem:workpiece".equals(str(item.getItemMeta().getPersistentDataContainer(), "item_definition"));
+    }
     boolean technical(ItemStack item) { String d=definition(item); return d!=null&&(!"FINISHED".equals(str(item.getItemMeta().getPersistentDataContainer(),"forge_state"))); }
     boolean locked(ItemStack item) { return readWorkpiece(item).map(w->w.session()!=null).orElse(false); }
     public boolean isHammer(ItemStack item) {

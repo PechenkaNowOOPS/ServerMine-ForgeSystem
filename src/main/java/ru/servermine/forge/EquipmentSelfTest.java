@@ -43,10 +43,24 @@ final class EquipmentSelfTest {
             inventory[40]=new ItemStack(Material.DIAMOND,EquipmentRules.diamonds(product));plugin.forging.upgradeInventory(inventory,0);require(inventory[40]==null,"Exact payment not consumed");
             var forged=finished.clone();forged.setType(Material.valueOf("DIAMOND_"+product));var fake=forged.getItemMeta();fake.getPersistentDataContainer().set(ForgeItems.key("equipment_tier"),PersistentDataType.STRING,"DIAMOND");forged.setItemMeta(fake);
             require(items.readWorkpiece(forged).isEmpty(),"Unsigned diamond tier accepted");
+            require(SmithingProtection.mustBlock(new ItemStack[]{forged},new ItemStack(Material.valueOf("NETHERITE_"+product))),"Forge item passed through smithing: "+product);
         }
+        require(!SmithingProtection.mustBlock(new ItemStack[]{new ItemStack(Material.DIAMOND_SWORD)},new ItemStack(Material.NETHERITE_SWORD)),"Vanilla diamond smithing blocked");
         reject(()->items.upgradeToDiamond(new ItemStack(Material.IRON_PICKAXE)));
         var recipes=Bukkit.recipeIterator();while(recipes.hasNext()){Recipe recipe=recipes.next();if(recipe instanceof CraftingRecipe)require(!EquipmentRules.blockedCraft(recipe.getResult().getType()),"Blocked recipe remains registered");}
         require(Bukkit.getRecipe(NamespacedKey.minecraft("wooden_pickaxe"))!=null&&Bukkit.getRecipe(NamespacedKey.minecraft("stone_pickaxe"))!=null,"Wood/stone recipes removed");
+        verifyLateRecipeRestore(plugin);
+    }
+    private static void verifyLateRecipeRestore(ForgeSystemPlugin plugin) {
+        NamespacedKey key=new NamespacedKey(plugin,"selftest_late_iron_sword");
+        ShapedRecipe recipe=new ShapedRecipe(key,new ItemStack(Material.IRON_SWORD));recipe.shape("I","I","S");
+        recipe.setIngredient('I',Material.IRON_INGOT);recipe.setIngredient('S',Material.STICK);
+        try {
+            require(Bukkit.addRecipe(recipe),"Could not register late-recipe probe");
+            EquipmentRecipes probe=new EquipmentRecipes();probe.remove();
+            require(Bukkit.getRecipe(key)==null,"Late blocked recipe survived cleanup");
+            probe.restore();require(Bukkit.getRecipe(key)!=null,"Foreign late recipe was not restored");
+        } finally {Bukkit.removeRecipe(key);}
     }
     private static void require(boolean condition,String message){if(!condition)throw new IllegalStateException(message);}
     private static void reject(Runnable action){try{action.run();}catch(IllegalArgumentException expected){return;}throw new IllegalStateException("Invalid upgrade accepted");}
