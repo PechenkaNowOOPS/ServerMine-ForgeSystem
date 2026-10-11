@@ -8,9 +8,11 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.function.Consumer;
 import org.bukkit.Bukkit;
+import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.data.BlockData;
+import org.bukkit.block.data.Levelled;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -18,10 +20,16 @@ import org.bukkit.inventory.ItemStack;
 /** Write-ahead player snapshots: journal -> apply -> save player -> clear journal.
  * Inputs belong to persistent per-player escrow; they are never dropped into the world. */
 final class DurableStore {
+    @FunctionalInterface interface WorldEffectApplier { void apply(WorldEffect effect); }
     final Path path;
+    private final WorldEffectApplier worldEffectApplier;
     YamlConfiguration data=new YamlConfiguration();
     boolean failed;
-    DurableStore(Path path) throws Exception { this.path=path; if(Files.exists(path)) data.load(path.toFile()); }
+    DurableStore(Path path) throws Exception { this(path,WorldEffect::apply); }
+    DurableStore(Path path,WorldEffectApplier worldEffectApplier) throws Exception {
+        this.path=path;this.worldEffectApplier=Objects.requireNonNull(worldEffectApplier);
+        if(Files.exists(path)) data.load(path.toFile());
+    }
     static String encode(ItemStack i) { return ForgeItems.empty(i)?"":Base64.getEncoder().encodeToString(i.serializeAsBytes()); }
     static ItemStack decode(String s) { return s==null||s.isBlank()?null:ItemStack.deserializeBytes(Base64.getDecoder().decode(s)); }
     static List<String> encode(ItemStack[] items) { return Arrays.stream(items).map(DurableStore::encode).toList(); }
@@ -30,9 +38,23 @@ final class DurableStore {
         static WorldEffect capture(Block block,String after) {
             return new WorldEffect(block.getWorld().getUID(),block.getX(),block.getY(),block.getZ(),block.getBlockData().getAsString(),after);
         }
-        void apply() {
+        void apply() { apply(false); }
+        void applyRollback() { apply(true); }
+        private void apply(boolean allowRollback) {
             World target=Bukkit.getWorld(world);
             if(target==null)throw new IllegalStateException("World for pending ForgeSystem block operation is unavailable: "+world);
+            if(y<target.getMinHeight()||y>=target.getMaxHeight()||!target.isChunkLoaded(x>>4,z>>4))
+                throw new IllegalStateException("World block for pending ForgeSystem operation is unavailable or not loaded: "+world+":"+x+","+y+","+z);
+            BlockData expectedBefore=Bukkit.createBlockData(before),expectedAfter=Bukkit.createBlockData(after);
+            boolean forward=expectedBefore.getMaterial()==Material.WATER_CAULDRON&&expectedBefore instanceof Levelled levelled
+                    &&QuenchRules.nextCauldronData(Material.WATER_CAULDRON,levelled.getLevel(),levelled.getMaximumLevel()).equals(expectedAfter.getAsString());
+            boolean rollback=allowRollback&&((expectedBefore.getMaterial()==Material.WATER_CAULDRON&&expectedBefore instanceof Levelled levelled
+                    &&expectedAfter.getMaterial()==Material.WATER_CAULDRON&&expectedAfter instanceof Levelled restored
+                    &&QuenchRules.nextCauldronData(Material.WATER_CAULDRON,restored.getLevel(),restored.getMaximumLevel()).equals(expectedBefore.getAsString()))
+                    ||(expectedBefore.getMaterial()==Material.CAULDRON&&expectedAfter.getMaterial()==Material.WATER_CAULDRON
+                    &&expectedAfter instanceof Levelled levelOne&&levelOne.getLevel()==1));
+            if(!forward&&!rollback)
+                throw new IllegalStateException("Invalid pending ForgeSystem block transition");
             Block block=target.getBlockAt(x,y,z);String current=block.getBlockData().getAsString();
             if(current.equals(after)){target.save(true);return;}
             if(!current.equals(before))throw new IllegalStateException("Pending ForgeSystem block operation conflicts with changed world at "+world+":"+x+","+y+","+z);
@@ -80,7 +102,7 @@ final class DurableStore {
         try {save();} catch(RuntimeException ex) {try{data.loadFromString(rollback);}catch(Exception ignored){}throw ex;}
         String journalSnapshot=data.saveToString();
         try {
-            if(worldEffect!=null)worldEffect.apply();
+            if(worldEffect!=null)worldEffectApplier.apply(worldEffect);
             p.getInventory().setContents(state.contents); p.setItemOnCursor(state.cursor); p.saveData();
             data.set(root+".last-operation",operation.toString()); data.set(root+".pending",null); save();
         } catch(RuntimeException ex) {
@@ -90,7 +112,7 @@ final class DurableStore {
             }
             try {
                 p.getInventory().setContents(previousContents);p.setItemOnCursor(previousCursor);p.saveData();
-                if(worldEffect!=null)worldEffect.reverse().apply();
+                if(worldEffect!=null)worldEffect.reverse().applyRollback();
                 data.loadFromString(rollback);save();
             } catch(Exception compensation) {
                 try{data.loadFromString(journalSnapshot);}catch(Exception ignored){}
@@ -100,14 +122,21 @@ final class DurableStore {
         }
     }
     void recover(Player p) {
+        if(failed)throw new IllegalStateException("Storage is in fail-closed mode; recovery is stopped");
         String root="players."+p.getUniqueId();
         if(data.contains(root+".pending")) {
             String pendingSnapshot=data.saveToString();
             try {
-                p.getInventory().setContents(decode(data.getStringList(root+".pending.contents"),41));
-                p.setItemOnCursor(decode(data.getString(root+".pending.cursor"))); p.saveData();
-                WorldEffect effect=readWorldEffect(root+".pending.world-effect");if(effect!=null)effect.apply();
-                data.set(root+".last-operation",data.getString(root+".pending.id"));data.set(root+".pending",null);save();failed=false;
+                String operation=Objects.requireNonNull(data.getString(root+".pending.id"));UUID.fromString(operation);
+                if(!data.contains(root+".pending.contents")||!data.contains(root+".pending.cursor"))
+                    throw new IllegalStateException("Pending ForgeSystem inventory snapshot is incomplete");
+                List<String> encodedContents=data.getStringList(root+".pending.contents");
+                if(encodedContents.size()!=41)throw new IllegalStateException("Pending ForgeSystem inventory snapshot has an invalid size");
+                ItemStack[] contents=decode(encodedContents,41);ItemStack cursor=decode(data.getString(root+".pending.cursor"));
+                WorldEffect effect=readWorldEffect(root+".pending.world-effect");
+                if(effect!=null)worldEffectApplier.apply(effect);
+                p.getInventory().setContents(contents);p.setItemOnCursor(cursor);p.saveData();
+                data.set(root+".last-operation",operation);data.set(root+".pending",null);save();failed=false;
             } catch(RuntimeException ex) {try{data.loadFromString(pendingSnapshot);}catch(Exception ignored){}failed=true;throw new IllegalStateException("Pending ForgeSystem operation could not be recovered",ex); }
         }
     }

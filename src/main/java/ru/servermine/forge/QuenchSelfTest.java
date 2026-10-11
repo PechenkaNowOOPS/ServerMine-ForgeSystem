@@ -17,20 +17,24 @@ final class QuenchSelfTest {
     static void run(ForgeSystemPlugin plugin) throws Exception {
         Path dir=Files.createTempDirectory(plugin.getDataFolder().toPath(),"quench-selftest-");
         DurableStore previousStore=plugin.store;World world=Bukkit.getWorlds().get(0);Block block=findAir(world);String before=block.getBlockData().getAsString();
-        UUID playerId=UUID.randomUUID();ItemStack[][] contents={new ItemStack[41]};boolean[] permitted={true};
+        UUID playerId=UUID.randomUUID();ItemStack[][] contents={new ItemStack[41]};ItemStack[] cursor={new ItemStack(Material.AIR)};int[] inventoryWrites={0},cursorWrites={0},playerSaves={0};boolean[] permitted={true};
         PlayerInventory inventory=(PlayerInventory)Proxy.newProxyInstance(PlayerInventory.class.getClassLoader(),new Class<?>[]{PlayerInventory.class},(proxy,method,args)->switch(method.getName()){
             case "getContents"->Arrays.stream(contents[0]).map(i->i==null?null:i.clone()).toArray(ItemStack[]::new);
-            case "setContents"->{contents[0]=(ItemStack[])args[0];yield null;}
+            case "setContents"->{contents[0]=(ItemStack[])args[0];inventoryWrites[0]++;yield null;}
             case "getHeldItemSlot"->0;case "getItemInMainHand"->contents[0][0];
             default->throw new UnsupportedOperationException(method.getName());
         });
         Player player=(Player)Proxy.newProxyInstance(Player.class.getClassLoader(),new Class<?>[]{Player.class},(proxy,method,args)->switch(method.getName()){
-            case "getUniqueId"->playerId;case "getInventory"->inventory;case "getItemOnCursor"->new ItemStack(Material.AIR);
-            case "setItemOnCursor","saveData","playSound"->null;case "hasPermission"->permitted[0];case "getLocation"->block.getLocation();
+            case "getUniqueId"->playerId;case "getInventory"->inventory;case "getItemOnCursor"->cursor[0];
+            case "setItemOnCursor"->{cursor[0]=(ItemStack)args[0];cursorWrites[0]++;yield null;}
+            case "saveData"->{playerSaves[0]++;yield null;}case "playSound"->null;case "hasPermission"->permitted[0];case "getLocation"->block.getLocation();
             default->throw new UnsupportedOperationException(method.getName());
         });
         try {
             plugin.store=new DurableStore(dir.resolve("state.yml"));
+            setCauldron(block,1);DurableStore.WorldEffect rollbackProbe=DurableStore.WorldEffect.capture(block,"minecraft:cauldron");
+            rollbackProbe.apply();check(block.getType()==Material.CAULDRON,"Level-one quench transition failed");rollbackProbe.reverse().applyRollback();
+            check(block.getBlockData().getAsString().endsWith("level=1]"),"Level-one world rollback failed");
             for(int level=3;level>=1;level--) {
                 setCauldron(block,level);contents[0][0]=unquenched(plugin,Product.SWORD);
                 check(plugin.forging.quenchOrAssemble(player,block),"Filled cauldron did not quench at level "+level);
@@ -59,6 +63,31 @@ final class QuenchSelfTest {
             catch(IllegalStateException expected){journalFailureRejected=expected.getMessage()!=null&&expected.getMessage().contains("Cannot commit forge state");}
             check(journalFailureRejected,"Failed journal write was accepted or reported incorrectly");
             check(contents[0][0].equals(failed)&&block.getBlockData().getAsString().endsWith("level=3]"),"Failed journal write changed item or water");
+
+            String root="players."+playerId;ItemStack conflictInput=unquenched(plugin,Product.SWORD);contents[0][0]=conflictInput;
+            Workpiece conflictWorkpiece=plugin.items.readWorkpiece(conflictInput).orElseThrow();
+            ItemStack conflictOutput=plugin.items.change(conflictInput,conflictWorkpiece.progress(State.QUENCHED_PART,conflictWorkpiece.quality(),conflictWorkpiece.stage(),conflictWorkpiece.cap(),conflictWorkpiece.smith(),null,20,System.currentTimeMillis()));
+            ItemStack[] conflictContents=contents[0].clone();conflictContents[0]=conflictOutput;setCauldron(block,3);
+            DurableStore.WorldEffect conflictEffect=DurableStore.WorldEffect.capture(block,"minecraft:water_cauldron[level=2]");block.setType(Material.STONE,false);
+            DurableStore conflictStore=pending(dir.resolve("recovery-conflict.yml"),root,conflictContents,cursor[0],conflictEffect);
+            plugin.store=conflictStore;int writesBefore=inventoryWrites[0],cursorBefore=cursorWrites[0],savesBefore=playerSaves[0];
+            boolean conflictRejected=false;try{plugin.store.recover(player);}catch(IllegalStateException expected){conflictRejected=expected.getMessage()!=null&&expected.getMessage().contains("could not be recovered");}
+            check(conflictRejected&&inventoryWrites[0]==writesBefore&&cursorWrites[0]==cursorBefore&&playerSaves[0]==savesBefore,"Conflicting block changed player inventory or playerdata");
+            check(conflictStore.data.contains(root+".pending")&&block.getType()==Material.STONE,"Conflict cleared journal or changed block");
+
+            setCauldron(block,3);ItemStack recoveryInput=unquenched(plugin,Product.PICKAXE);Workpiece recoveryWorkpiece=plugin.items.readWorkpiece(recoveryInput).orElseThrow();
+            ItemStack recoveryOutput=plugin.items.change(recoveryInput,recoveryWorkpiece.progress(State.QUENCHED_PART,recoveryWorkpiece.quality(),recoveryWorkpiece.stage(),recoveryWorkpiece.cap(),recoveryWorkpiece.smith(),null,20,System.currentTimeMillis()));
+            ItemStack[] recoveryContents=new ItemStack[41];recoveryContents[0]=recoveryOutput;
+            DurableStore recoveryStore=pending(dir.resolve("recovery-success.yml"),root,recoveryContents,cursor[0],DurableStore.WorldEffect.capture(block,"minecraft:water_cauldron[level=2]"));
+            plugin.store=recoveryStore;plugin.store.recover(player);
+            check(contents[0][0].equals(recoveryOutput)&&block.getBlockData().getAsString().endsWith("level=2]"),"Recovery failed to apply block before expected item");
+            int completedWrites=inventoryWrites[0],completedSaves=playerSaves[0];contents[0][0]=new ItemStack(Material.DIAMOND);
+            plugin.store=new DurableStore(dir.resolve("recovery-success.yml"));plugin.store.recover(player);
+            check(contents[0][0].getType()==Material.DIAMOND&&inventoryWrites[0]==completedWrites&&playerSaves[0]==completedSaves&&block.getBlockData().getAsString().endsWith("level=2]"),"Completed recovery replay changed player or water");
+
+            setCauldron(block,2);pending(dir.resolve("recovery-after.yml"),root,recoveryContents,cursor[0],DurableStore.WorldEffect.capture(block,"minecraft:water_cauldron[level=1]"));
+            setCauldron(block,1);plugin.store=new DurableStore(dir.resolve("recovery-after.yml"));plugin.store.recover(player);
+            check(block.getBlockData().getAsString().endsWith("level=1]")&&contents[0][0].equals(recoveryOutput),"Recovery from already-applied block consumed water twice or missed inventory");
         } finally {
             plugin.store=previousStore;block.setBlockData(Bukkit.createBlockData(before),false);world.save();
             try(var paths=Files.walk(dir)){for(Path path:paths.sorted(Comparator.reverseOrder()).toList())Files.deleteIfExists(path);}
@@ -71,6 +100,11 @@ final class QuenchSelfTest {
         throw new IllegalStateException("No temporary air block found for quench selftest");
     }
     private static void setCauldron(Block block,int level){block.setBlockData(Bukkit.createBlockData("minecraft:water_cauldron[level="+level+"]"),false);}
+    private static DurableStore pending(Path path,String root,ItemStack[] contents,ItemStack cursor,DurableStore.WorldEffect effect) throws Exception {
+        DurableStore store=new DurableStore(path);store.data.set(root+".pending.id",UUID.randomUUID().toString());
+        store.data.set(root+".pending.contents",DurableStore.encode(contents));store.data.set(root+".pending.cursor",DurableStore.encode(cursor));
+        store.writeWorldEffect(root+".pending.world-effect",effect);store.save();return store;
+    }
     private static ItemStack unquenched(ForgeSystemPlugin plugin,Product product) {
         ItemStack item=plugin.items.createWorkpiece(Metal.IRON,product,900);Workpiece blank=plugin.items.readWorkpiece(item).orElseThrow();UUID smith=UUID.randomUUID();long now=System.currentTimeMillis();
         Workpiece forging=blank.progress(State.FORGING,Quality.NONE,1,3,smith,UUID.randomUUID(),900,now);item=plugin.items.change(item,forging);
