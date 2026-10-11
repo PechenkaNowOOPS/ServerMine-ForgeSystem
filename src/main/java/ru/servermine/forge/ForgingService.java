@@ -60,11 +60,11 @@ final class ForgingService {
         if(cold){p.playSound(p.getLocation(),Sound.BLOCK_FIRE_EXTINGUISH,.65f,.8f);Bukkit.getScheduler().runTaskLater(plugin,()->{if(p.isOnline()&&!sessions.containsKey(p.getUniqueId()))p.sendActionBar(Component.empty());},16);}
     }
     void recoverLocks(Player p){plugin.store.transact(p,s->{for(int i=0;i<s.contents.length;i++){var read=plugin.items.readWorkpiece(s.contents[i]);if(read.isEmpty())continue;Workpiece w=read.get();if(w.session()!=null){var r=plugin.settings.metals.get(w.metal());double t=w.at(System.currentTimeMillis(),plugin.settings.ambient,r.cooling());s.contents[i]=plugin.items.change(s.contents[i],w.progress(State.FORGING,w.quality(),w.stage(),t<=r.minimum()?Math.min(w.cap(),w.stage()):w.cap(),w.smith(),null,t,System.currentTimeMillis()));}}});}
-    void tick(long tick){
+    void tick(){
         for(Active a:new ArrayList<>(sessions.values())){Player p=Bukkit.getPlayer(a.player);if(p==null)continue;
             var off=plugin.items.readWorkpiece(p.getInventory().getItemInOffHand());
             if(p.isDead()||!plugin.items.isHammer(p.getInventory().getItemInMainHand())||off.isEmpty()||!off.get().id().equals(a.item)||p.getWorld()!=a.anvil.getWorld()||p.getLocation().distanceSquared(a.anvil.getLocation())>64||!anvil(a.anvil.getType())){plugin.safe(p,()->stop(p,false));continue;}
-            a.game.tick(System.nanoTime());if(a.game.cold){plugin.safe(p,()->stop(p,true));continue;}if(tick%2==0)show(p,a,System.nanoTime());
+            long now=System.nanoTime();a.game.tick(now);if(a.game.cold){plugin.safe(p,()->stop(p,true));continue;}show(p,a,now);
         }
     }
     void show(Player p,Active a,long now){

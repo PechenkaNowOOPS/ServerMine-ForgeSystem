@@ -32,7 +32,7 @@ public final class ForgeSystemPlugin extends JavaPlugin implements Listener {
             getCommand("forge").setTabCompleter((sender,command,alias,args)->args.length==1?List.of("open","hammer","kit","inspect","status","claim","reload","hot","selftest","migrate").stream().filter(s->s.startsWith(args[0].toLowerCase(Locale.ROOT))).toList():List.of());
             getServer().getScheduler().runTaskTimer(this,()->{
                 if(store.failed)return;tick++;
-                try{forging.tick(tick);if(tick%settings.physics==0)menus.physics();if(tick%settings.visual==0)menus.tick();if(tick%settings.save==0)store.save();
+                try{forging.tick();if(tick%settings.physics==0)menus.physics();if(tick%settings.visual==0)menus.tick();if(tick%settings.save==0)store.save();
                     if(tick%200==0)equipmentRecipes.remove();
                     if(tick%20==0)for(Player p:Bukkit.getOnlinePlayers())refreshLore(p);
                 }catch(Exception ex){getLogger().log(java.util.logging.Level.SEVERE,"Forge scheduler error",ex);}
@@ -142,7 +142,7 @@ public final class ForgeSystemPlugin extends JavaPlugin implements Listener {
         if(action.equals("help")){help(sender);return true;}
         if(action.equals("status")||action.equals("info")){sender.sendMessage("ForgeSystem 3.1.0 | stations="+(store.data.getConfigurationSection("stations")==null?0:store.data.getConfigurationSection("stations").getKeys(false).size())+" | sessions="+forging.sessions.size()+" | storage="+(store.failed?"FAILED":"OK"));return true;}
         if(!Set.of("open","claim","stop","inspect").contains(action)&&!sender.hasPermission("forgesystem.admin")){sender.sendMessage("Нет права forgesystem.admin.");return true;}
-        if(action.equals("selftest")){try{selftest();InteractionSelfTest.run(this);EquipmentSelfTest.run(this);QuenchSelfTest.run(this);StorageSelfTest.run(getDataFolder().toPath());sender.sendMessage("ForgeSystem SELFTEST PASS: smithing protection, cauldron quench and its journal, late recipe restore, diamond upgrades, codec, escrow and recovery.");}catch(Exception ex){sender.sendMessage("SELFTEST FAIL: "+ex);getLogger().log(java.util.logging.Level.SEVERE,"Selftest",ex);}return true;}
+        if(action.equals("selftest")){try{selftest();InteractionSelfTest.run(this);MenuInputTransferSelfTest.run(this);EquipmentSelfTest.run(this);QuenchSelfTest.run(this);StorageSelfTest.run(getDataFolder().toPath());sender.sendMessage("ForgeSystem SELFTEST PASS: smithing protection, menu shift-transfer, cauldron quench and its journal, late recipe restore, diamond upgrades, codec, escrow and recovery.");}catch(Exception ex){sender.sendMessage("SELFTEST FAIL: "+ex);getLogger().log(java.util.logging.Level.SEVERE,"Selftest",ex);}return true;}
         if(action.equals("reload")){try{Settings next=new Settings(getDataFolder());settings=next;sender.sendMessage("Конфигурация проверена и обновлена. Настройки HTTP применятся после перезапуска.");}catch(Exception ex){sender.sendMessage("Конфигурация отклонена: "+ex.getMessage());}return true;}
         if(!(sender instanceof Player p)){sender.sendMessage("Эта команда предназначена для игрока.");return true;}
         safe(p,()->{switch(action){
