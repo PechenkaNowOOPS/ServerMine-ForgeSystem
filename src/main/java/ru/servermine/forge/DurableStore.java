@@ -137,7 +137,13 @@ final class DurableStore {
                 if(effect!=null)worldEffectApplier.apply(effect);
                 p.getInventory().setContents(contents);p.setItemOnCursor(cursor);p.saveData();
                 data.set(root+".last-operation",operation);data.set(root+".pending",null);save();failed=false;
-            } catch(RuntimeException ex) {try{data.loadFromString(pendingSnapshot);}catch(Exception ignored){}failed=true;throw new IllegalStateException("Pending ForgeSystem operation could not be recovered",ex); }
+            } catch(RuntimeException ex) {
+                try{data.loadFromString(pendingSnapshot);}catch(Exception ignored){}
+                // The per-player pending record is the fail-closed guard. A transient world
+                // conflict/unavailable chunk must not poison storage globally: after an
+                // operator resolves it, recovery can safely be retried on this instance.
+                throw new IllegalStateException("Pending ForgeSystem operation could not be recovered",ex);
+            }
         }
     }
     void writeWorldEffect(String root,WorldEffect effect) {

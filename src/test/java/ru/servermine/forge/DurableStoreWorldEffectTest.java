@@ -45,7 +45,23 @@ class DurableStoreWorldEffectTest {
         f.journal(store,effect);DurableStore recoveryStore=store;
         assertThrows(IllegalStateException.class,()->recoveryStore.recover(f.player));
         assertEquals(0,f.inventoryWrites[0]);assertEquals(0,f.cursorWrites[0]);assertEquals(0,f.playerSaves[0]);
-        assertTrue(store.failed);assertTrue(store.data.contains(f.root+".pending"));assertEquals("minecraft:lava",block[0]);
+        assertFalse(store.failed);assertTrue(store.data.contains(f.root+".pending"));assertEquals("minecraft:lava",block[0]);
+    }
+
+    @Test void unavailableWorldEffectCanBeRetriedOnSameStoreAfterOperatorMakesChunkAvailable() throws Exception {
+        var f=new Fixture(Files.createTempDirectory("forge-recover-retry-"));boolean[] available={false};
+        var effect=f.effect();DurableStore store=f.pending(effect);
+        store=new DurableStore(f.path,pending->{
+            if(!available[0])throw new IllegalStateException("chunk is not loaded");
+            f.order.add("world");
+        });f.journal(store,effect);DurableStore recoveryStore=store;
+        assertThrows(IllegalStateException.class,()->recoveryStore.recover(f.player));
+        assertFalse(store.failed);assertTrue(store.data.contains(f.root+".pending"));
+        assertEquals(0,f.inventoryWrites[0]);assertEquals(0,f.cursorWrites[0]);assertEquals(0,f.playerSaves[0]);
+
+        available[0]=true;recoveryStore.recover(f.player);
+        assertFalse(store.data.contains(f.root+".pending"));assertEquals(1,f.inventoryWrites[0]);
+        assertEquals(1,f.cursorWrites[0]);assertEquals(1,f.playerSaves[0]);
     }
 
     @Test void worldSaveFailureLeavesInventoryUntouchedAndRestartCanFinishAfterBlockWasWritten() throws Exception {
@@ -84,7 +100,7 @@ class DurableStoreWorldEffectTest {
         DurableStore recoveryStore=new DurableStore(f.path,pending->fail("unexpected world effect"));
         assertThrows(IllegalStateException.class,()->recoveryStore.recover(f.player));
         assertEquals(0,f.inventoryWrites[0]);assertEquals(0,f.cursorWrites[0]);assertEquals(0,f.playerSaves[0]);
-        assertTrue(recoveryStore.failed);assertTrue(recoveryStore.data.contains(f.root+".pending"));
+        assertFalse(recoveryStore.failed);assertTrue(recoveryStore.data.contains(f.root+".pending"));
     }
 
     private static final class Fixture {
