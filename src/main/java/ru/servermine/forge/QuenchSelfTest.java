@@ -54,8 +54,10 @@ final class QuenchSelfTest {
             check(contents[0][0].equals(denied)&&block.getBlockData().getAsString().endsWith("level=3]"),"Permission failure changed item or water");permitted[0]=true;
 
             plugin.store=new DurableStore(dir.resolve("missing-parent").resolve("state.yml"));contents[0][0]=unquenched(plugin,Product.SHOVEL);ItemStack failed=contents[0][0].clone();
-            try{plugin.forging.quenchOrAssemble(player,block);throw new IllegalStateException("Failed journal write was accepted");}
-            catch(IllegalStateException expected){}
+            boolean journalFailureRejected=false;
+            try{plugin.forging.quenchOrAssemble(player,block);}
+            catch(IllegalStateException expected){journalFailureRejected=expected.getMessage()!=null&&expected.getMessage().contains("Cannot commit forge state");}
+            check(journalFailureRejected,"Failed journal write was accepted or reported incorrectly");
             check(contents[0][0].equals(failed)&&block.getBlockData().getAsString().endsWith("level=3]"),"Failed journal write changed item or water");
         } finally {
             plugin.store=previousStore;block.setBlockData(Bukkit.createBlockData(before),false);world.save();
