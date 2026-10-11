@@ -7,6 +7,11 @@ import static org.junit.jupiter.api.Assertions.*;
 import ru.servermine.forge.Model.*;
 
 class QuenchRulesTest {
+    @Test void helpDescribesTheRequiredCauldronAndSingleWaterLevel() {
+        assertEquals("Возьмите незакалённую деталь в основную руку и нажмите ПКМ по наполненному водой котлу. Одна закалка расходует один уровень воды.",QuenchRules.HELP);
+        assertEquals("ПКМ по наполненному водой котлу — закалить (−1 уровень).",QuenchRules.ITEM_HELP);
+    }
+
     private static Workpiece piece(State state,Product product) {
         return new Workpiece(UUID.randomUUID(),Metal.IRON,product,state,Quality.GOOD,1,1,1,UUID.randomUUID(),null,600,1,"test");
     }

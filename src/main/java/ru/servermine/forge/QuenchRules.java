@@ -5,6 +5,8 @@ import ru.servermine.forge.Model.State;
 import ru.servermine.forge.Model.Workpiece;
 
 final class QuenchRules {
+    static final String HELP="Возьмите незакалённую деталь в основную руку и нажмите ПКМ по наполненному водой котлу. Одна закалка расходует один уровень воды.";
+    static final String ITEM_HELP="ПКМ по наполненному водой котлу — закалить (−1 уровень).";
     private QuenchRules() {}
 
     static String nextCauldronData(Material type, int level, int maximum) {

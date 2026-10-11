@@ -139,7 +139,7 @@ final class ForgeItems implements ForgeItemsApi {
         var lore=new ArrayList<Component>(); lore.add(text("Материал: "+(diamond?"Алмаз (кованая железная основа)":switch(w.metal()){case IRON->"Железо";case GOLD->"Золото";case COPPER->"Медь";}),NamedTextColor.GRAY));
         lore.add(text("Температура: "+Math.round(temperature)+"°C",NamedTextColor.YELLOW));
         lore.add(text("Качество: "+quality(w.quality())+" | Этап "+w.stage()+" / "+w.cap(),NamedTextColor.GRAY));
-        lore.add(text(switch(w.state()) {case HOT_BLANK,FORGING -> "В левую руку; ПКМ молотом по наковальне."; case UNQUENCHED -> "ПКМ по воде — закалить."; case QUENCHED_PART -> "ПКМ по наковальне с палками в левой руке."; case FINISHED -> "Ковка завершена.";},NamedTextColor.GRAY));
+        lore.add(text(switch(w.state()) {case HOT_BLANK,FORGING -> "В левую руку; ПКМ молотом по наковальне."; case UNQUENCHED -> QuenchRules.ITEM_HELP; case QUENCHED_PART -> "ПКМ по наковальне с палками в левой руке."; case FINISHED -> "Ковка завершена.";},NamedTextColor.GRAY));
         if(EquipmentRules.canUpgrade(w,diamond))lore.add(text("ПКМ по наковальне: "+EquipmentRules.diamonds(w.product())+" алмазов в левой руке — улучшить.",NamedTextColor.AQUA));
         meta.lore(lore); item.setItemMeta(meta); return item;
     }
