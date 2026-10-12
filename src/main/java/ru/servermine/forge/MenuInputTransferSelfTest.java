@@ -99,9 +99,14 @@ final class MenuInputTransferSelfTest {
     }
     private static void click(ForgeSystemPlugin plugin,Player player,int sourceSlot,ClickType click,InventoryAction action,boolean bottom) {
         Inventory top=Bukkit.createInventory(null,54);Inventory other=Bukkit.createInventory(null,9);
+        Inventory bottomWrapper=(Inventory)Proxy.newProxyInstance(Inventory.class.getClassLoader(),new Class<?>[]{Inventory.class},(proxy,method,args)->switch(method.getName()){
+            case "getType"->InventoryType.PLAYER;
+            case "getHolder"->player;
+            default->throw new IllegalStateException("Unexpected wrapped inventory call: "+method.getName());
+        });
         InventoryView view=(InventoryView)Proxy.newProxyInstance(InventoryView.class.getClassLoader(),new Class<?>[]{InventoryView.class},(proxy,method,args)->switch(method.getName()){
-            case "getTopInventory"->top;case "getBottomInventory"->player.getInventory();case "getPlayer"->player;
-            case "getInventory"->{int raw=(int)args[0];yield raw<54?top:bottom?player.getInventory():other;}
+            case "getTopInventory"->top;case "getBottomInventory"->bottomWrapper;case "getPlayer"->player;
+            case "getInventory"->{int raw=(int)args[0];yield raw<54?top:bottom?bottomWrapper:other;}
             case "convertSlot"->{int raw=(int)args[0];yield raw<54?raw:raw-54;}
             case "getSlotType"->InventoryType.SlotType.CONTAINER;
             case "getType"->InventoryType.CHEST;

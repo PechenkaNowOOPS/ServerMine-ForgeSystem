@@ -87,10 +87,16 @@ final class ForgeMenuService {
         if(raw>=54){
             if(e.isShiftClick()){
                 e.setCancelled(true);
-                int slot=MenuInputTransfer.sourceSlot(e.getClickedInventory()==p.getInventory()&&e.getView().getBottomInventory()==p.getInventory(),raw,e.getSlot(),
+                Inventory clicked=e.getClickedInventory(),bottom=e.getView().getBottomInventory();
+                boolean playerSide=MenuInputTransfer.playerInventorySide(clicked==null?null:clicked.getType().name(),bottom.getType().name(),
+                        e.getView().getPlayer().getUniqueId(),p.getUniqueId());
+                int slot=MenuInputTransfer.sourceSlot(playerSide,raw,e.getSlot(),
                         e.getView().convertSlot(raw),e.getView().getTopInventory().getSize(),e.getClick(),e.getAction());
                 if(slot<0)return;
                 plugin.safe(p,()->shiftTransfer(p,slot));render(p,m);
+                // Click-event inventory writes can race the container's packet reconciliation.
+                // Resync once the event has completed so the client sees the escrow result immediately.
+                Bukkit.getScheduler().runTask(plugin,()->{if(p.isOnline()&&active(p,m)){p.updateInventory();render(p,m);}});
             }
             return;
         }

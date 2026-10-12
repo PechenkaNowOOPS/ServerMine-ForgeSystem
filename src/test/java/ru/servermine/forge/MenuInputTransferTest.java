@@ -3,9 +3,18 @@ package ru.servermine.forge;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryAction;
 import org.junit.jupiter.api.Test;
+import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 
 class MenuInputTransferTest {
+    @Test void playerInventorySideDoesNotDependOnWrapperObjectIdentity() {
+        UUID player=UUID.randomUUID();
+        assertTrue(MenuInputTransfer.playerInventorySide("PLAYER","PLAYER",player,player));
+        assertFalse(MenuInputTransfer.playerInventorySide("CHEST","PLAYER",player,player));
+        assertFalse(MenuInputTransfer.playerInventorySide("PLAYER","PLAYER",UUID.randomUUID(),player));
+        assertFalse(MenuInputTransfer.playerInventorySide(null,"PLAYER",player,player));
+    }
+
     @Test void onlyShiftMoveFromVisiblePlayerStorageRoutesIntoMenu() {
         assertEquals(0, MenuInputTransfer.sourceSlot(true, 54, 0, 0, 54,
                 ClickType.SHIFT_LEFT, InventoryAction.MOVE_TO_OTHER_INVENTORY));

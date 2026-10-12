@@ -13,6 +13,13 @@ final class MenuInputTransfer {
         return click == ClickType.SHIFT_LEFT || click == ClickType.SHIFT_RIGHT;
     }
 
+    /** Inventory wrappers are not required to be the same Java object for the same player. */
+    static boolean playerInventorySide(String clickedType, String bottomType,
+                                       java.util.UUID viewPlayer, java.util.UUID player) {
+        return "PLAYER".equals(clickedType) && "PLAYER".equals(bottomType)
+                && viewPlayer != null && viewPlayer.equals(player);
+    }
+
     /** Returns a player-storage slot only for a real move-to-menu action from the bottom inventory. */
     static int sourceSlot(boolean clickedPlayerInventory, int rawSlot, int localSlot, int convertedSlot,
                           int topSize, ClickType click, InventoryAction action) {
