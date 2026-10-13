@@ -19,6 +19,7 @@ import ru.servermine.forge.Model.*;
 public final class ForgeSystemPlugin extends JavaPlugin implements Listener {
     Settings settings; DurableStore store; ForgeItems items; ForgeMenuService menus; ForgingService forging; PackService pack;
     private long tick;
+    private final ShiftClickTrace shiftTrace=new ShiftClickTrace(this);
     private final EquipmentRecipes equipmentRecipes=new EquipmentRecipes();
     @Override public void onEnable(){
         try {
@@ -27,6 +28,7 @@ public final class ForgeSystemPlugin extends JavaPlugin implements Listener {
             try{pack.start();}catch(Exception e){getLogger().warning("Resource pack hosting unavailable; using vanilla fallback: "+e.getMessage());}
             getServer().getServicesManager().register(ForgeItemsApi.class,items,this,ServicePriority.Normal);
             getServer().getPluginManager().registerEvents(this,this);
+            getServer().getPluginManager().registerEvents(shiftTrace,this);
             equipmentRecipes.remove();
             Objects.requireNonNull(getCommand("forge")).setExecutor(this);
             getCommand("forge").setTabCompleter((sender,command,alias,args)->args.length==1?List.of("open","hammer","kit","inspect","status","claim","reload","hot","selftest","migrate").stream().filter(s->s.startsWith(args[0].toLowerCase(Locale.ROOT))).toList():List.of());
@@ -142,6 +144,11 @@ public final class ForgeSystemPlugin extends JavaPlugin implements Listener {
         if(action.equals("help")){help(sender);return true;}
         if(action.equals("status")||action.equals("info")){sender.sendMessage("ForgeSystem 3.1.0 | stations="+(store.data.getConfigurationSection("stations")==null?0:store.data.getConfigurationSection("stations").getKeys(false).size())+" | sessions="+forging.sessions.size()+" | storage="+(store.failed?"FAILED":"OK"));return true;}
         if(!Set.of("open","claim","stop","inspect").contains(action)&&!sender.hasPermission("forgesystem.admin")){sender.sendMessage("Нет права forgesystem.admin.");return true;}
+        if(action.equals("shifttrace")){
+            if(args.length!=2||!Set.of("on","off").contains(args[1])){sender.sendMessage("/forge shifttrace on|off");return true;}
+            boolean enabled=args[1].equals("on");shiftTrace.enable(enabled);
+            sender.sendMessage(enabled?"Диагностика Shift включена на 10 минут (до 100 кликов). Результаты: [ShiftTrace] в журнале сервера.":"Диагностика Shift выключена.");return true;
+        }
         if(action.equals("selftest")){try{selftest();InteractionSelfTest.run(this);MenuInputTransferSelfTest.run(this);EquipmentSelfTest.run(this);QuenchSelfTest.run(this);StorageSelfTest.run(getDataFolder().toPath());sender.sendMessage("ForgeSystem SELFTEST PASS: smithing protection, menu shift-transfer, cauldron quench and its journal, late recipe restore, diamond upgrades, codec, escrow and recovery.");}catch(Exception ex){sender.sendMessage("SELFTEST FAIL: "+ex);getLogger().log(java.util.logging.Level.SEVERE,"Selftest",ex);}return true;}
         if(action.equals("reload")){try{Settings next=new Settings(getDataFolder());settings=next;sender.sendMessage("Конфигурация проверена и обновлена. Настройки HTTP применятся после перезапуска.");}catch(Exception ex){sender.sendMessage("Конфигурация отклонена: "+ex.getMessage());}return true;}
         if(!(sender instanceof Player p)){sender.sendMessage("Эта команда предназначена для игрока.");return true;}

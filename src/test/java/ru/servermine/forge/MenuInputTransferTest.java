@@ -16,9 +16,13 @@ class MenuInputTransferTest {
     }
 
     @Test void onlyShiftMoveFromVisiblePlayerStorageRoutesIntoMenu() {
-        assertEquals(0, MenuInputTransfer.sourceSlot(true, 54, 0, 0, 54,
+        assertEquals(9, MenuInputTransfer.sourceSlot(true, 54, 9, 9, 54,
                 ClickType.SHIFT_LEFT, InventoryAction.MOVE_TO_OTHER_INVENTORY));
-        assertEquals(35, MenuInputTransfer.sourceSlot(true, 89, 35, 35, 54,
+        assertEquals(35, MenuInputTransfer.sourceSlot(true, 80, 35, 35, 54,
+                ClickType.SHIFT_RIGHT, InventoryAction.MOVE_TO_OTHER_INVENTORY));
+        assertEquals(0, MenuInputTransfer.sourceSlot(true, 81, 0, 0, 54,
+                ClickType.SHIFT_LEFT, InventoryAction.MOVE_TO_OTHER_INVENTORY));
+        assertEquals(8, MenuInputTransfer.sourceSlot(true, 89, 8, 8, 54,
                 ClickType.SHIFT_RIGHT, InventoryAction.MOVE_TO_OTHER_INVENTORY));
         assertEquals(-1, MenuInputTransfer.sourceSlot(false, 54, 0, 0, 54,
                 ClickType.SHIFT_LEFT, InventoryAction.MOVE_TO_OTHER_INVENTORY));
@@ -26,7 +30,7 @@ class MenuInputTransferTest {
                 ClickType.SHIFT_LEFT, InventoryAction.MOVE_TO_OTHER_INVENTORY));
         assertEquals(-1, MenuInputTransfer.sourceSlot(true, 90, 36, 36, 54,
                 ClickType.SHIFT_LEFT, InventoryAction.MOVE_TO_OTHER_INVENTORY));
-        assertEquals(-1, MenuInputTransfer.sourceSlot(true, 54, 1, 0, 54,
+        assertEquals(-1, MenuInputTransfer.sourceSlot(true, 54, 10, 9, 54,
                 ClickType.SHIFT_LEFT, InventoryAction.MOVE_TO_OTHER_INVENTORY));
         assertEquals(-1, MenuInputTransfer.sourceSlot(true, 54, 0, 0, 54,
                 ClickType.LEFT, InventoryAction.PICKUP_ALL));

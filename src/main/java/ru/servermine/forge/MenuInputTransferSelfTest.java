@@ -107,12 +107,12 @@ final class MenuInputTransferSelfTest {
         InventoryView view=(InventoryView)Proxy.newProxyInstance(InventoryView.class.getClassLoader(),new Class<?>[]{InventoryView.class},(proxy,method,args)->switch(method.getName()){
             case "getTopInventory"->top;case "getBottomInventory"->bottomWrapper;case "getPlayer"->player;
             case "getInventory"->{int raw=(int)args[0];yield raw<54?top:bottom?bottomWrapper:other;}
-            case "convertSlot"->{int raw=(int)args[0];yield raw<54?raw:raw-54;}
+            case "convertSlot"->{int raw=(int)args[0];if(raw<54)yield raw;int bottomSlot=raw-54;yield bottomSlot>=27?bottomSlot-27:bottomSlot+9;}
             case "getSlotType"->InventoryType.SlotType.CONTAINER;
             case "getType"->InventoryType.CHEST;
             default->throw new IllegalStateException("Unexpected view call: "+method.getName());
         });
-        int raw=54+sourceSlot;InventoryClickEvent event=new InventoryClickEvent(view,InventoryType.SlotType.CONTAINER,raw,click,action);
+        int raw=54+(sourceSlot<9?27+sourceSlot:sourceSlot-9);InventoryClickEvent event=new InventoryClickEvent(view,InventoryType.SlotType.CONTAINER,raw,click,action);
         ForgeMenuService.Menu menu=new ForgeMenuService.Menu(player.getUniqueId(),null,"selftest");menu.inventory=top;
         plugin.menus.click(event,player,menu);
         check(event.isCancelled(),"shift-transfer event was not cancelled");
