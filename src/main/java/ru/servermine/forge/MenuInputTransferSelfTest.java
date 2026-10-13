@@ -23,6 +23,7 @@ final class MenuInputTransferSelfTest {
     private MenuInputTransferSelfTest() {}
 
     static void run(ForgeSystemPlugin plugin) throws Exception {
+        checkDisplayPlaceholders();
         Path dir=Files.createTempDirectory(plugin.getDataFolder().toPath(),"menu-transfer-selftest-");
         DurableStore original=plugin.store;
         ItemStack[][] contents={new ItemStack[41]};ItemStack[] cursor={new ItemStack(Material.STONE,3)};int[] saves={0};
@@ -87,6 +88,24 @@ final class MenuInputTransferSelfTest {
         ItemStack[] input=plugin.store.inputs(player.getUniqueId());
         check(input[target]!=null&&input[target].getAmount()==amount,"wrong input slot or quantity: "+item.getType());
         check(contents[0][slot]==null,"source item was not consumed: "+item.getType());
+    }
+    private static void checkDisplayPlaceholders(){
+        ForgeMenuService.Menu menu=new ForgeMenuService.Menu(UUID.randomUUID(),null,"preview-selftest");
+        menu.inventory=Bukkit.createInventory(menu,54);
+        ItemStack ingots=new ItemStack(Material.IRON_INGOT,37),coal=new ItemStack(Material.COAL_BLOCK,63);
+        menu.inventory.setItem(12,ingots);menu.inventory.setItem(10,coal);
+        ItemStack packed=ForgeMenuService.placeholder(true),fallback=ForgeMenuService.placeholder(false);
+        ForgeMenuService.fillEmptySlots(menu.inventory,null,packed);menu.filler=packed;
+        for(ItemStack item:menu.inventory.getContents())check(!ForgeItems.empty(item),"empty cell permits predicted quick-move");
+        check(ingots.equals(menu.inventory.getItem(12))&&coal.equals(menu.inventory.getItem(10)),"placeholder replaced input");
+        ForgeMenuService.set(menu,12,null);
+        check(packed.equals(menu.inventory.getItem(12)),"empty input lacks placeholder");
+        ForgeMenuService.fillEmptySlots(menu.inventory,packed,fallback);menu.filler=fallback;
+        check(fallback.equals(menu.inventory.getItem(12))&&fallback.equals(menu.inventory.getItem(0)),"fallback placeholder did not refresh");
+        check(coal.equals(menu.inventory.getItem(10)),"fallback refresh changed fuel");
+        ForgeMenuService.set(menu,12,ingots);
+        check(ingots.equals(menu.inventory.getItem(12)),"real input did not replace placeholder");
+        check(packed.getItemMeta().isHideTooltip()&&packed.getItemMeta().getItemModel()!=null,"packed placeholder must be invisible without tooltip");
     }
     private static void rejectUnchanged(ForgeSystemPlugin plugin,Player player,ItemStack[][] contents,int slot,ItemStack item,String scenario) {
         contents[0][slot]=item.clone();var before=DurableStore.encode(contents[0]);var inputs=DurableStore.encode(plugin.store.inputs(player.getUniqueId()));

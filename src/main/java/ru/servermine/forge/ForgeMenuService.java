@@ -30,7 +30,7 @@ final class ForgeMenuService {
         TitleSnapshot titleSnapshot; String recipes=""; Status feedback; long feedbackUntil; int priority;
         final Map<String,ItemStack> staticButtons=new HashMap<>();
         final Map<Integer,String> dynamicKeys=new HashMap<>();
-        ItemStack cachedReheatSource,cachedReheatDisplay; int cachedReheatTemperature=Integer.MIN_VALUE; String cachedReheatSprite;
+        ItemStack filler,cachedReheatSource,cachedReheatDisplay; int cachedReheatTemperature=Integer.MIN_VALUE; String cachedReheatSprite;
         boolean closed;
         Menu(UUID viewer,Block core,String station){this.viewer=viewer;this.core=core;this.station=station;}
         public Inventory getInventory(){return inventory;}
@@ -139,6 +139,8 @@ final class ForgeMenuService {
     void feedback(Menu m,Status s,int priority){if(m.feedbackUntil<=System.currentTimeMillis()||priority>=m.priority){m.feedback=s;m.priority=priority;m.feedbackUntil=System.currentTimeMillis()+1800;}}
     void render(Player p,Menu m){
         if(!active(p,m))return;var s=state(m.station);var cfg=plugin.settings;boolean ready=s.canWork(cfg.working),pack=plugin.pack.loaded(p)&&cfg.gui.getBoolean("forge.visuals.custom-background");
+        ItemStack filler=m.staticButtons.computeIfAbsent("filler|"+pack,k->placeholder(pack));
+        fillEmptySlots(m.inventory,m.filler,filler);m.filler=filler;
         Status status=!valid(m.core)?Status.INVALID_STATION:m.feedbackUntil>System.currentTimeMillis()?m.feedback:Status.valueOf(s.status(cfg.ambient,cfg.working).name());
         FuelDisplay fuel=FuelDisplay.of(s.fuel,cfg.fuels.getOrDefault(Material.COAL,0.0));
         Snapshot next=new Snapshot(TemperatureModel.frame(s.temperature,cfg.ambient,cfg.maximum),(int)Math.round(s.temperature),status,ready,pack,fuel);
@@ -148,7 +150,7 @@ final class ForgeMenuService {
             p.getOpenInventory().setTitle(pack?title(titleView):"Кузнечный горн | "+shownTemperature+"°C | Топливо "+fuel.time());m.titleSnapshot=titleState;
         }
         ItemStack[] inputs=plugin.store.inputs(p.getUniqueId());
-        for(int i=0;i<2;i++)set(m.inventory,10+2*i,inputs[i]);
+        for(int i=0;i<2;i++)set(m,10+2*i,inputs[i]);
         ItemStack reheating=inputs[2];
         Optional<Workpiece> reheatWorkpiece=plugin.items.readWorkpiece(reheating);
         if(reheatWorkpiece.isPresent()){
@@ -161,23 +163,23 @@ final class ForgeMenuService {
             }
             reheating=m.cachedReheatDisplay;
         }else{m.cachedReheatSource=null;m.cachedReheatDisplay=null;m.cachedReheatTemperature=Integer.MIN_VALUE;m.cachedReheatSprite=null;}
-        set(m.inventory,14,reheating);
+        set(m,14,reheating);
         setDynamic(m,16,pack+"|"+shownTemperature+"|"+cfg.working+"|"+cfg.maximum,()->button(pack?Material.PAPER:Material.FIRE_CHARGE,"Температура: "+shownTemperature+"°C",pack,"Рабочая: "+Math.round(cfg.working)+"°C","Максимум: "+Math.round(cfg.maximum)+"°C"));
-        set(m.inventory,19,cachedButton(m,(pack?"pack":"vanilla")+"|load",Material.HOPPER,"Загрузить топливо",false,"ЛКМ: 1 предмет","Shift+ЛКМ: весь стак"));
+        set(m,19,cachedButton(m,(pack?"pack":"vanilla")+"|load",Material.HOPPER,"Загрузить топливо",false,"ЛКМ: 1 предмет","Shift+ЛКМ: весь стак"));
         ItemStack reserve=button(pack?Material.PAPER:Material.COAL,fuel.seconds()>0?"Топливо горит — осталось "+fuel.time():"Топливо закончилось",pack,
                 fuel.coalEquivalent()<0?"Уголь не настроен как топливо":"В пересчёте на уголь: ≈ "+fuel.coalEquivalent()+" шт.",
                 "С учётом частично сгоревшего топлива",
                 fuel.seconds()>0?"При "+Math.round(cfg.maximum)+"°C горн поддерживает жар":"Горн остывает без топлива");
         setDynamic(m,20,pack+"|"+fuel.seconds()+"|"+fuel.coalEquivalent(),()->reserve);
         // Empty slots beneath the fuel panel expose its tooltip without item icons.
-        if(pack){set(m.inventory,33,reserve);set(m.inventory,34,reserve);set(m.inventory,35,reserve);}
-        else {set(m.inventory,33,null);set(m.inventory,34,null);set(m.inventory,35,null);}
+        if(pack){set(m,33,reserve);set(m,34,reserve);set(m,35,reserve);}
+        else {set(m,33,null);set(m,34,null);set(m,35,null);}
         setDynamic(m,21,pack+"|"+status,()->button(pack?Material.PAPER:Material.LIME_DYE,status.text,pack));
-        set(m.inventory,23,cachedButton(m,(pack?"pack":"vanilla")+"|reheat",Material.BLAZE_POWDER,"Повторно нагреть",false,"ЛКМ — нагреть","Качество и этапы сохраняются"));
-        set(m.inventory,25,cachedButton(m,(pack?"pack":"vanilla")+"|help",Material.BOOK,"Помощь",false,"ЛКМ — открыть"));
-        set(m.inventory,53,cachedButton(m,(pack?"pack":"vanilla")+"|close",pack?Material.PAPER:Material.BARRIER,"Закрыть",pack,"ЛКМ — закрыть"));
+        set(m,23,cachedButton(m,(pack?"pack":"vanilla")+"|reheat",Material.BLAZE_POWDER,"Повторно нагреть",false,"ЛКМ — нагреть","Качество и этапы сохраняются"));
+        set(m,25,cachedButton(m,(pack?"pack":"vanilla")+"|help",Material.BOOK,"Помощь",false,"ЛКМ — открыть"));
+        set(m,53,cachedButton(m,(pack?"pack":"vanilla")+"|close",pack?Material.PAPER:Material.BARRIER,"Закрыть",pack,"ЛКМ — закрыть"));
         Metal metal=metal(inputs[1]);int amount=ForgeItems.empty(inputs[1])?0:inputs[1].getAmount();String recipeKey=pack+":"+metal+":"+amount+":"+ready;
-        if(!recipeKey.equals(m.recipes)){m.recipes=recipeKey;for(Product product:Product.values()){int cost=cfg.recipes.get(product).ingots();set(m.inventory,product.slot,button(ForgeItems.icon(metal==null?Metal.IRON:metal,product),product.label,false,"ЛКМ — создать заготовку","Стоимость: "+cost+" слитков",ready&&metal!=null&&amount>=cost?"Можно создать":"Условия не выполнены"));}}
+        if(!recipeKey.equals(m.recipes)){m.recipes=recipeKey;for(Product product:Product.values()){int cost=cfg.recipes.get(product).ingots();set(m,product.slot,button(ForgeItems.icon(metal==null?Metal.IRON:metal,product),product.label,false,"ЛКМ — создать заготовку","Стоимость: "+cost+" слитков",ready&&metal!=null&&amount>=cost?"Можно создать":"Условия не выполнены"));}}
     }
     static String title(Snapshot s){
         StringBuilder b=new StringBuilder("§f").append(ForgeGuiGlyphRegistry.LEFT);layer(b,ForgeGuiGlyphRegistry.BASE);layer(b,ForgeGuiGlyphRegistry.LABELS);layer(b,(char)(ForgeGuiGlyphRegistry.HEAT+s.frame));
@@ -192,7 +194,20 @@ final class ForgeMenuService {
     static void layer(StringBuilder b,char c){b.append(c).append(ForgeGuiGlyphRegistry.BACK);}
     static ItemStack button(Material type,String title,boolean invisible,String... lore){var i=new ItemStack(type);var meta=i.getItemMeta();meta.displayName(ForgeItems.text(title,NamedTextColor.GOLD));meta.lore(Arrays.stream(lore).map(s->ForgeItems.text(s,NamedTextColor.GRAY)).toList());if(invisible)meta.setItemModel(new NamespacedKey("servermine","empty"));i.setItemMeta(meta);return i;}
     ItemStack cachedButton(Menu menu,String key,Material type,String title,boolean invisible,String... lore){return menu.staticButtons.computeIfAbsent(key,k->button(type,title,invisible,lore));}
-    void setDynamic(Menu menu,int slot,String key,java.util.function.Supplier<ItemStack> factory){if(!Objects.equals(menu.dynamicKeys.get(slot),key)){menu.dynamicKeys.put(slot,key);set(menu.inventory,slot,factory.get());}}
+    void setDynamic(Menu menu,int slot,String key,java.util.function.Supplier<ItemStack> factory){if(!Objects.equals(menu.dynamicKeys.get(slot),key)){menu.dynamicKeys.put(slot,key);set(menu,slot,factory.get());}}
+    // A chest client predicts quick-moves into its first empty cell, unaware of escrow routing.
+    // Occupy visual-only cells and empty inputs; real input contents still come exclusively from the store.
+    static void fillEmptySlots(Inventory inventory,ItemStack previous,ItemStack filler){
+        for(int slot=0;slot<inventory.getSize();slot++){
+            ItemStack current=inventory.getItem(slot);
+            if(ForgeItems.empty(current)||(previous!=null&&previous.equals(current)))set(inventory,slot,filler);
+        }
+    }
+    static ItemStack placeholder(boolean pack){
+        ItemStack item=button(pack?Material.BARRIER:Material.GRAY_STAINED_GLASS_PANE," ",pack);
+        var meta=item.getItemMeta();meta.setHideTooltip(true);item.setItemMeta(meta);return item;
+    }
+    static void set(Menu menu,int slot,ItemStack item){set(menu.inventory,slot,ForgeItems.empty(item)?menu.filler:item);}
     static void set(Inventory inv,int n,ItemStack item){if(!Objects.equals(inv.getItem(n),item))inv.setItem(n,item);}
     void tick(){for(Menu m:new ArrayList<>(menus.values())){Player p=Bukkit.getPlayer(m.viewer);if(p==null)continue;if(!valid(m.core)||p.getWorld()!=m.core.getWorld()||p.getLocation().distanceSquared(m.core.getLocation())>64){feedback(m,Status.INVALID_STATION,2);render(p,m);p.closeInventory();}else render(p,m);}}
     void close(Player p,Menu m){if(m.closed)return;m.closed=true;menus.remove(p.getUniqueId(),m);plugin.safe(p,()->plugin.store.returnInputs(p));}
