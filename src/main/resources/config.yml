@@ -9,6 +9,9 @@ station:
   manager-period-ticks: 20
   save-period-ticks: 200
 operation-cooldown-ms: 300
+storage:
+  # Empty keeps state.yml beside the plugin configuration. An absolute path can move WAL writes to faster storage.
+  state-path: ""
 fuel:
   COAL: 80.0
   CHARCOAL: 80.0

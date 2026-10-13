@@ -27,8 +27,9 @@ final class DurableStore {
     boolean failed;
     DurableStore(Path path) throws Exception { this(path,WorldEffect::apply); }
     DurableStore(Path path,WorldEffectApplier worldEffectApplier) throws Exception {
-        this.path=path;this.worldEffectApplier=Objects.requireNonNull(worldEffectApplier);
-        if(Files.exists(path)) data.load(path.toFile());
+        this.path=path.toAbsolutePath().normalize();this.worldEffectApplier=Objects.requireNonNull(worldEffectApplier);
+        Files.createDirectories(this.path.getParent());
+        if(Files.exists(this.path)) data.load(this.path.toFile());
     }
     static String encode(ItemStack i) { return ForgeItems.empty(i)?"":Base64.getEncoder().encodeToString(i.serializeAsBytes()); }
     static ItemStack decode(String s) { return s==null||s.isBlank()?null:ItemStack.deserializeBytes(Base64.getDecoder().decode(s)); }

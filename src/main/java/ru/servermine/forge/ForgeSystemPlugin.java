@@ -24,7 +24,7 @@ public final class ForgeSystemPlugin extends JavaPlugin implements Listener {
     @Override public void onEnable(){
         try {
             for(String f:List.of("config","materials","products","multiblocks","gui","messages","resourcepack"))if(!new java.io.File(getDataFolder(),f+".yml").exists())saveResource(f+".yml",false);
-            settings=new Settings(getDataFolder());store=new DurableStore(getDataFolder().toPath().resolve("state.yml"));items=new ForgeItems(this);menus=new ForgeMenuService(this);forging=new ForgingService(this);pack=new PackService(this);
+            settings=new Settings(getDataFolder());store=new DurableStore(settings.statePath);items=new ForgeItems(this);menus=new ForgeMenuService(this);forging=new ForgingService(this);pack=new PackService(this);
             try{pack.start();}catch(Exception e){getLogger().warning("Resource pack hosting unavailable; using vanilla fallback: "+e.getMessage());}
             getServer().getServicesManager().register(ForgeItemsApi.class,items,this,ServicePriority.Normal);
             getServer().getPluginManager().registerEvents(this,this);
