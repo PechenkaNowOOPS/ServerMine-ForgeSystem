@@ -1,6 +1,7 @@
 package ru.servermine.forge;
 
 import java.io.File;
+import java.nio.file.Path;
 import java.util.*;
 import org.bukkit.Material;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -14,6 +15,7 @@ final class Settings {
     final int physics,visual,save;
     final long cooldown;
     final String revision;
+    final Path statePath;
     final Map<Material,Double> fuels=new EnumMap<>(Material.class);
     final Map<Metal,MetalRule> metals=new EnumMap<>(Metal.class);
     final Map<Product,Recipe> recipes=new EnumMap<>(Product.class);
@@ -32,6 +34,9 @@ final class Settings {
         }
         boolean oldMetalMessage="Нужны обычные железные или золотые слитки.".equals(messages.getString("unsupported-metal"));
         if(oldMetalMessage)messages.set("unsupported-metal","Нужны обычные железные, золотые или медные слитки.");
+        String configuredStatePath=c.getString("storage.state-path","").trim();
+        Path configuredPath=configuredStatePath.isEmpty()?Path.of("state.yml"):Path.of(configuredStatePath);
+        statePath=(configuredPath.isAbsolute()?configuredPath:dir.toPath().resolve(configuredPath)).toAbsolutePath().normalize();
         ambient=c.getDouble("station.ambient-temperature"); working=c.getDouble("station.working-temperature"); maximum=c.getDouble("station.maximum-temperature");
         heat=c.getDouble("station.heating-per-second"); cool=c.getDouble("station.cooling-per-second");
         if(!(0<=ambient&&ambient<working&&working<maximum&&maximum<=9999&&heat>0&&cool>0)

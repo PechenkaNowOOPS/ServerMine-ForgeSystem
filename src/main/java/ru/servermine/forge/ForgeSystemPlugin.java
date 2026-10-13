@@ -19,20 +19,22 @@ import ru.servermine.forge.Model.*;
 public final class ForgeSystemPlugin extends JavaPlugin implements Listener {
     Settings settings; DurableStore store; ForgeItems items; ForgeMenuService menus; ForgingService forging; PackService pack;
     private long tick;
+    private final ShiftClickTrace shiftTrace=new ShiftClickTrace(this);
     private final EquipmentRecipes equipmentRecipes=new EquipmentRecipes();
     @Override public void onEnable(){
         try {
             for(String f:List.of("config","materials","products","multiblocks","gui","messages","resourcepack"))if(!new java.io.File(getDataFolder(),f+".yml").exists())saveResource(f+".yml",false);
-            settings=new Settings(getDataFolder());store=new DurableStore(getDataFolder().toPath().resolve("state.yml"));items=new ForgeItems(this);menus=new ForgeMenuService(this);forging=new ForgingService(this);pack=new PackService(this);
+            settings=new Settings(getDataFolder());store=new DurableStore(settings.statePath);items=new ForgeItems(this);menus=new ForgeMenuService(this);forging=new ForgingService(this);pack=new PackService(this);
             try{pack.start();}catch(Exception e){getLogger().warning("Resource pack hosting unavailable; using vanilla fallback: "+e.getMessage());}
             getServer().getServicesManager().register(ForgeItemsApi.class,items,this,ServicePriority.Normal);
             getServer().getPluginManager().registerEvents(this,this);
+            getServer().getPluginManager().registerEvents(shiftTrace,this);
             equipmentRecipes.remove();
             Objects.requireNonNull(getCommand("forge")).setExecutor(this);
             getCommand("forge").setTabCompleter((sender,command,alias,args)->args.length==1?List.of("open","hammer","kit","inspect","status","claim","reload","hot","selftest","migrate").stream().filter(s->s.startsWith(args[0].toLowerCase(Locale.ROOT))).toList():List.of());
             getServer().getScheduler().runTaskTimer(this,()->{
                 if(store.failed)return;tick++;
-                try{forging.tick(tick);if(tick%settings.physics==0)menus.physics();if(tick%settings.visual==0)menus.tick();if(tick%settings.save==0)store.save();
+                try{forging.tick();if(tick%settings.physics==0)menus.physics();if(tick%settings.visual==0)menus.tick();if(tick%settings.save==0)store.save();
                     if(tick%200==0)equipmentRecipes.remove();
                     if(tick%20==0)for(Player p:Bukkit.getOnlinePlayers())refreshLore(p);
                 }catch(Exception ex){getLogger().log(java.util.logging.Level.SEVERE,"Forge scheduler error",ex);}
@@ -73,7 +75,11 @@ public final class ForgeSystemPlugin extends JavaPlugin implements Listener {
         }
         if(block!=null&&block.getType()==Material.BLAST_FURNACE&&items.isHammer(p.getInventory().getItemInMainHand())){e.setCancelled(true);safe(p,()->menus.open(p,block));return;}
         Block target=block!=null&&block.getType()==Material.WATER_CAULDRON?block:p.getTargetBlockExact(5,FluidCollisionMode.ALWAYS);
-        if(target!=null)safe(p,()->{if(forging.quenchOrAssemble(p,target))e.setCancelled(true);});
+        if(target!=null&&items.readWorkpiece(p.getInventory().getItemInMainHand()).map(w->
+                (w.state()==State.UNQUENCHED&&target.getType()==Material.WATER_CAULDRON)
+                        ||(w.state()==State.QUENCHED_PART&&ForgingService.anvil(target.getType()))).orElse(false)){
+            e.setCancelled(true);safe(p,()->forging.quenchOrAssemble(p,target));
+        }
     }
     @EventHandler(priority=EventPriority.HIGHEST,ignoreCancelled=true) public void click(InventoryClickEvent e){
         if(!(e.getWhoClicked() instanceof Player p))return;
@@ -110,7 +116,14 @@ public final class ForgeSystemPlugin extends JavaPlugin implements Listener {
     @EventHandler(ignoreCancelled=true) public void furnace(FurnaceSmeltEvent e){if(items.technical(e.getSource()))e.setCancelled(true);}
     @EventHandler(ignoreCancelled=true) public void burn(FurnaceBurnEvent e){if(items.technical(e.getFuel()))e.setCancelled(true);}
     @EventHandler public void anvil(PrepareAnvilEvent e){for(var i:e.getInventory().getContents())if(items.technical(i)){e.setResult(null);break;}}
-    @EventHandler public void smithing(PrepareSmithingEvent e){for(var i:e.getInventory().getContents())if(items.technical(i)){e.setResult(null);break;}}
+    @EventHandler(priority=EventPriority.HIGHEST,ignoreCancelled=true) public void smithing(PrepareSmithingEvent e){
+        if(SmithingProtection.mustBlock(e.getInventory().getContents(),e.getResult()))e.setResult(null);
+    }
+    @EventHandler(priority=EventPriority.HIGHEST,ignoreCancelled=true) public void smithingTake(SmithItemEvent e){
+        if(!SmithingProtection.containsForgeWorkpiece(e.getInventory().getContents()))return;
+        e.setCancelled(true);e.getInventory().setResult(null);
+        if(e.getWhoClicked() instanceof Player p)p.updateInventory();
+    }
     @EventHandler public void grind(PrepareGrindstoneEvent e){for(var i:e.getInventory().getContents())if(items.technical(i)){e.setResult(null);break;}}
     @EventHandler public void death(PlayerDeathEvent e){
         Player p=e.getEntity();
@@ -125,13 +138,18 @@ public final class ForgeSystemPlugin extends JavaPlugin implements Listener {
     }
     @EventHandler public void respawn(PlayerRespawnEvent e){Bukkit.getScheduler().runTask(this,()->safe(e.getPlayer(),()->{store.returnInputs(e.getPlayer());store.claim(e.getPlayer());}));}
     @EventHandler(ignoreCancelled=true) public void damage(EntityDamageByEntityEvent e){if(e.getDamager() instanceof Player p&&items.isHammer(p.getInventory().getItemInMainHand()))e.setCancelled(true);}
-    void help(CommandSender p){p.sendMessage("§6Кузница: плавильная печь на кирпичном блоке.");p.sendMessage("§eПКМ молотом по печи → топливо → металл → изделие.");p.sendMessage("§eЗаготовка в левой руке, молот в правой: ПКМ по наковальне.");p.sendMessage("§eПервый удар запускает ковку. Остывшую заготовку верните в горн.");p.sendMessage("§eДеталь в правой руке: ПКМ по воде; затем для инструментов ПКМ по наковальне с палками в левой руке.");p.sendMessage("§bГотовое кованое железное снаряжение в правую руку, алмазы в левую: ПКМ по наковальне — улучшить.");p.sendMessage("§e/forge claim — забрать предметы, которым не хватило места.");}
+    void help(CommandSender p){p.sendMessage("§6Кузница: плавильная печь на кирпичном блоке.");p.sendMessage("§eПКМ молотом по печи → топливо → металл → изделие.");p.sendMessage("§eЗаготовка в левой руке, молот в правой: ПКМ по наковальне.");p.sendMessage("§eПервый удар запускает ковку. Остывшую заготовку верните в горн.");p.sendMessage("§e"+QuenchRules.HELP);p.sendMessage("§eЗатем инструменты собираются ПКМ по наковальне с палками в левой руке.");p.sendMessage("§bГотовое кованое железное снаряжение в правую руку, алмазы в левую: ПКМ по наковальне — улучшить.");p.sendMessage("§e/forge claim — забрать предметы, которым не хватило места.");}
     @Override public boolean onCommand(CommandSender sender,Command command,String label,String[] args){
         String action=args.length==0?"open":args[0].toLowerCase(Locale.ROOT);
         if(action.equals("help")){help(sender);return true;}
         if(action.equals("status")||action.equals("info")){sender.sendMessage("ForgeSystem 3.1.0 | stations="+(store.data.getConfigurationSection("stations")==null?0:store.data.getConfigurationSection("stations").getKeys(false).size())+" | sessions="+forging.sessions.size()+" | storage="+(store.failed?"FAILED":"OK"));return true;}
         if(!Set.of("open","claim","stop","inspect").contains(action)&&!sender.hasPermission("forgesystem.admin")){sender.sendMessage("Нет права forgesystem.admin.");return true;}
-        if(action.equals("selftest")){try{selftest();InteractionSelfTest.run(this);EquipmentSelfTest.run(this);StorageSelfTest.run(getDataFolder().toPath());sender.sendMessage("ForgeSystem SELFTEST PASS: diamond upgrades, recipe restrictions, right-click routing, codec, sprite switching, hammer migration, vanilla finished items, thermal anchor, locks, transitions, escrow, rollback, crash replay, full-inventory recovery.");}catch(Exception ex){sender.sendMessage("SELFTEST FAIL: "+ex);getLogger().log(java.util.logging.Level.SEVERE,"Selftest",ex);}return true;}
+        if(action.equals("shifttrace")){
+            if(args.length!=2||!Set.of("on","off").contains(args[1])){sender.sendMessage("/forge shifttrace on|off");return true;}
+            boolean enabled=args[1].equals("on");shiftTrace.enable(enabled);
+            sender.sendMessage(enabled?"Диагностика Shift включена на 10 минут (до 100 кликов). Результаты: [ShiftTrace] в журнале сервера.":"Диагностика Shift выключена.");return true;
+        }
+        if(action.equals("selftest")){try{selftest();InteractionSelfTest.run(this);MenuInputTransferSelfTest.run(this);EquipmentSelfTest.run(this);QuenchSelfTest.run(this);StorageSelfTest.run(getDataFolder().toPath());sender.sendMessage("ForgeSystem SELFTEST PASS: smithing protection, menu shift-transfer, cauldron quench and its journal, late recipe restore, diamond upgrades, codec, escrow and recovery.");}catch(Exception ex){sender.sendMessage("SELFTEST FAIL: "+ex);getLogger().log(java.util.logging.Level.SEVERE,"Selftest",ex);}return true;}
         if(action.equals("reload")){try{Settings next=new Settings(getDataFolder());settings=next;sender.sendMessage("Конфигурация проверена и обновлена. Настройки HTTP применятся после перезапуска.");}catch(Exception ex){sender.sendMessage("Конфигурация отклонена: "+ex.getMessage());}return true;}
         if(!(sender instanceof Player p)){sender.sendMessage("Эта команда предназначена для игрока.");return true;}
         safe(p,()->{switch(action){

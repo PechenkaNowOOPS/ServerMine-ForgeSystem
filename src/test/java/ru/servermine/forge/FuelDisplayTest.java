@@ -31,6 +31,36 @@ class FuelDisplayTest {
         assertEquals("002359", after.fuel().clockDigits());
     }
 
+    @Test void titleTemperatureIsQuantizedWithoutDroppingThermometerFrames() {
+        var a=new ForgeMenuService.Snapshot(10,500,ForgeMenuService.Status.HEATING,true,true,FuelDisplay.of(80,80));
+        var b=new ForgeMenuService.Snapshot(10,511,ForgeMenuService.Status.HEATING,true,true,FuelDisplay.of(80,80));
+        var c=new ForgeMenuService.Snapshot(10,513,ForgeMenuService.Status.HEATING,true,true,FuelDisplay.of(80,80));
+        assertEquals(500,ForgeMenuService.displayTemperature(a.temperature()));
+        assertEquals(500,ForgeMenuService.displayTemperature(b.temperature()));
+        assertEquals(525,ForgeMenuService.displayTemperature(c.temperature()));
+        assertEquals(ForgeMenuService.TitleSnapshot.of(a),ForgeMenuService.TitleSnapshot.of(b));
+        assertNotEquals(ForgeMenuService.TitleSnapshot.of(b),ForgeMenuService.TitleSnapshot.of(c));
+        var nextFrame=new ForgeMenuService.Snapshot(11,511,ForgeMenuService.Status.HEATING,true,true,FuelDisplay.of(80,80));
+        assertNotEquals(ForgeMenuService.TitleSnapshot.of(b),ForgeMenuService.TitleSnapshot.of(nextFrame));
+        assertTrue(TemperatureModel.frame(500,20,1200)>=0&&TemperatureModel.frame(500,20,1200)<=20);
+    }
+
+    @Test void titleSnapshotSimulationReducesRefreshesComparedWithEveryTemperatureChange() {
+        ForgeMenuService.Snapshot previous=null;ForgeMenuService.TitleSnapshot previousTitle=null;
+        int oldTitleUpdates=0,policyTitleUpdates=0;
+        for(int tick=0;tick<=400;tick+=5){
+            int temperature=(int)Math.round(20+Math.min(500,tick*25.0/20));
+            var current=new ForgeMenuService.Snapshot(TemperatureModel.frame(temperature,20,1200),temperature,
+                    ForgeMenuService.Status.HEATING,false,true,FuelDisplay.of(Math.max(0,600-tick/20.0),80));
+            if(!current.equals(previous))oldTitleUpdates++;
+            var title=ForgeMenuService.TitleSnapshot.of(current);
+            if(!title.equals(previousTitle))policyTitleUpdates++;
+            previous=current;previousTitle=title;
+        }
+        assertTrue(policyTitleUpdates*5<=oldTitleUpdates*3,
+                "title refreshes: baseline="+oldTitleUpdates+", policy="+policyTitleUpdates);
+    }
+
     @Test void largeReservesHaveExplicitOverflowAndExactTooltipTime() {
         var display = FuelDisplay.of(800001, 80);
         assertTrue(display.timeOverflow());

@@ -29,6 +29,9 @@ final class ForgeItems implements ForgeItemsApi {
     static String str(PersistentDataContainer p,String k) { return p.get(key(k),PersistentDataType.STRING); }
     private static void set(PersistentDataContainer p,String k,String v) { if(v==null) p.remove(key(k)); else p.set(key(k),PersistentDataType.STRING,v); }
     String definition(ItemStack item) { return empty(item)?null:str(item.getItemMeta().getPersistentDataContainer(),"item_definition"); }
+    static boolean forgeWorkpieceIdentity(ItemStack item) {
+        return !empty(item) && "forgesystem:workpiece".equals(str(item.getItemMeta().getPersistentDataContainer(), "item_definition"));
+    }
     boolean technical(ItemStack item) { String d=definition(item); return d!=null&&(!"FINISHED".equals(str(item.getItemMeta().getPersistentDataContainer(),"forge_state"))); }
     boolean locked(ItemStack item) { return readWorkpiece(item).map(w->w.session()!=null).orElse(false); }
     public boolean isHammer(ItemStack item) {
@@ -136,7 +139,7 @@ final class ForgeItems implements ForgeItemsApi {
         var lore=new ArrayList<Component>(); lore.add(text("Материал: "+(diamond?"Алмаз (кованая железная основа)":switch(w.metal()){case IRON->"Железо";case GOLD->"Золото";case COPPER->"Медь";}),NamedTextColor.GRAY));
         lore.add(text("Температура: "+Math.round(temperature)+"°C",NamedTextColor.YELLOW));
         lore.add(text("Качество: "+quality(w.quality())+" | Этап "+w.stage()+" / "+w.cap(),NamedTextColor.GRAY));
-        lore.add(text(switch(w.state()) {case HOT_BLANK,FORGING -> "В левую руку; ПКМ молотом по наковальне."; case UNQUENCHED -> "ПКМ по воде — закалить."; case QUENCHED_PART -> "ПКМ по наковальне с палками в левой руке."; case FINISHED -> "Ковка завершена.";},NamedTextColor.GRAY));
+        lore.add(text(switch(w.state()) {case HOT_BLANK,FORGING -> "В левую руку; ПКМ молотом по наковальне."; case UNQUENCHED -> QuenchRules.ITEM_HELP; case QUENCHED_PART -> "ПКМ по наковальне с палками в левой руке."; case FINISHED -> "Ковка завершена.";},NamedTextColor.GRAY));
         if(EquipmentRules.canUpgrade(w,diamond))lore.add(text("ПКМ по наковальне: "+EquipmentRules.diamonds(w.product())+" алмазов в левой руке — улучшить.",NamedTextColor.AQUA));
         meta.lore(lore); item.setItemMeta(meta); return item;
     }

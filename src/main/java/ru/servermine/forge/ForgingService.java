@@ -4,6 +4,7 @@ import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 import org.bukkit.*;
 import org.bukkit.block.Block;
+import org.bukkit.block.data.Levelled;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import net.kyori.adventure.text.Component;
@@ -59,11 +60,11 @@ final class ForgingService {
         if(cold){p.playSound(p.getLocation(),Sound.BLOCK_FIRE_EXTINGUISH,.65f,.8f);Bukkit.getScheduler().runTaskLater(plugin,()->{if(p.isOnline()&&!sessions.containsKey(p.getUniqueId()))p.sendActionBar(Component.empty());},16);}
     }
     void recoverLocks(Player p){plugin.store.transact(p,s->{for(int i=0;i<s.contents.length;i++){var read=plugin.items.readWorkpiece(s.contents[i]);if(read.isEmpty())continue;Workpiece w=read.get();if(w.session()!=null){var r=plugin.settings.metals.get(w.metal());double t=w.at(System.currentTimeMillis(),plugin.settings.ambient,r.cooling());s.contents[i]=plugin.items.change(s.contents[i],w.progress(State.FORGING,w.quality(),w.stage(),t<=r.minimum()?Math.min(w.cap(),w.stage()):w.cap(),w.smith(),null,t,System.currentTimeMillis()));}}});}
-    void tick(long tick){
+    void tick(){
         for(Active a:new ArrayList<>(sessions.values())){Player p=Bukkit.getPlayer(a.player);if(p==null)continue;
             var off=plugin.items.readWorkpiece(p.getInventory().getItemInOffHand());
             if(p.isDead()||!plugin.items.isHammer(p.getInventory().getItemInMainHand())||off.isEmpty()||!off.get().id().equals(a.item)||p.getWorld()!=a.anvil.getWorld()||p.getLocation().distanceSquared(a.anvil.getLocation())>64||!anvil(a.anvil.getType())){plugin.safe(p,()->stop(p,false));continue;}
-            a.game.tick(System.nanoTime());if(a.game.cold){plugin.safe(p,()->stop(p,true));continue;}if(tick%2==0)show(p,a,System.nanoTime());
+            long now=System.nanoTime();a.game.tick(now);if(a.game.cold){plugin.safe(p,()->stop(p,true));continue;}show(p,a,now);
         }
     }
     void show(Player p,Active a,long now){
@@ -74,8 +75,16 @@ final class ForgingService {
     }
     boolean quenchOrAssemble(Player p,Block block){
         var item=p.getInventory().getItemInMainHand();var read=plugin.items.readWorkpiece(item);if(read.isEmpty())return false;Workpiece w=read.get();
-        if(w.state()==State.UNQUENCHED&&(block.getType()==Material.WATER||block.getType()==Material.WATER_CAULDRON)){
-            plugin.store.transact(p,s->{int hand=p.getInventory().getHeldItemSlot();s.contents[hand]=plugin.items.change(s.contents[hand],w.progress(w.product().armor()?State.FINISHED:State.QUENCHED_PART,w.quality(),w.stage(),w.cap(),w.smith(),null,plugin.settings.ambient,System.currentTimeMillis()));});
+        if(w.state()==State.UNQUENCHED&&block.getType()==Material.WATER_CAULDRON){
+            if(!p.hasPermission("forgesystem.use"))throw new IllegalArgumentException(plugin.settings.message("no-permission"));
+            if(!(block.getBlockData() instanceof Levelled levelled))throw new IllegalArgumentException("Закалка требует наполненный водой котёл.");
+            String target=QuenchRules.nextCauldronData(block.getType(),levelled.getLevel(),levelled.getMaximumLevel());
+            var effect=DurableStore.WorldEffect.capture(block,target);
+            plugin.store.transact(p,s->{int hand=p.getInventory().getHeldItemSlot();
+                Workpiece current=plugin.items.readWorkpiece(s.contents[hand]).orElseThrow(()->new IllegalArgumentException("Заготовка повреждена или не подписана."));
+                if(!QuenchRules.canQuench(current,true,block.getType(),levelled.getLevel()))throw new IllegalArgumentException("Эту деталь нельзя закалить.");
+                s.contents[hand]=plugin.items.change(s.contents[hand],current.progress(current.product().armor()?State.FINISHED:State.QUENCHED_PART,current.quality(),current.stage(),current.cap(),current.smith(),null,plugin.settings.ambient,System.currentTimeMillis()));
+            },effect);
             p.playSound(p.getLocation(),Sound.BLOCK_FIRE_EXTINGUISH,1,1);return true;
         }
         if(w.state()==State.QUENCHED_PART&&anvil(block.getType())){
